@@ -1,13 +1,10 @@
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead};
-use std::io::{Error, ErrorKind};
 
-use serde_json::Result;
-use serde_json::Error as SerdeJsonError;
+use anyhow::{Result, Context};
 use regex::Regex;
 use reqwest;
-use reqwest::Error as ReqwestError;
 use urlencoding::encode;
 
 
@@ -52,23 +49,15 @@ async fn get_card_image(card_name: &str, set_name: &str) -> Result<String> {
         card_name, set_name
     );
 
-    let res = reqwest::get(&url).await.unwrap();
+    let res = reqwest::get(&url).await.context("Failed to make request to Scryfall API")?;
 
     if res.status().is_success() {
-        let data: serde_json::Value = res.json().await.unwrap();
-        if let Some(image_uris) = data["image_uris"].as_object() {
-            if let Some(png_url) = image_uris.get("png") {
-                return Ok(png_url.as_str().unwrap().to_string());
-            } else {
-                panic!("Error: Image URL not found in the JSON response.");
-                //Err(ReqwestError)
-            }
-        } else {
-            panic!("jndkj")
-        }
+        let data: serde_json::Value = res.json().await.context("Failed to parse JSON response")?;
+        let image_uris = data["image_uris"].as_object().context("Field 'image_uris' not found in JSON response")?;
+        let png_url = image_uris.get("png").context("Image URL not found in JSON response")?;
+        Ok(png_url.as_str().ok_or_else(|| anyhow::anyhow!("Image URL is not a valid string"))?.to_string())
     } else {
-        panic!("Error: Failed to retrieve card data. Status Code: {}", res.status());
-        //Err(SerdeJsonError)
+        anyhow::bail!("Error: Failed to retrieve card data. Status Code: {}", res.status());
     }
 }
 
