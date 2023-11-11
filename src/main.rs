@@ -20,11 +20,6 @@ async fn main() {
 
     let text_file_path = &args[1];
 
-    match get_card_image("Tayam, Luminous Enigma", "C20").await {
-        Ok(image_url) => println!("{}", image_url),
-        Err(e) => eprintln!("Error: {}", e),
-    }
-
     match parse_text_file(text_file_path).await {
         Ok(card_data) => {
             for (card_name, set_name) in card_data {
