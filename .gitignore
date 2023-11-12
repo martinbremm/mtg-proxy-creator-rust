@@ -15,3 +15,6 @@ Cargo.lock
 
 # .txt directory 
 input/
+
+# .pdf files
+*.pdf
