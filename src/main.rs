@@ -30,16 +30,22 @@ async fn main() {
     let text_file_path = &args[1];
 
     match parse_text_file(text_file_path).await {
+
         Ok(card_data) => {
+            
             for (card_name, set_name) in card_data {
             
                 match get_card_image_url(&card_name, &set_name).await {
+
                     Ok(image_url) => match get_card_image(&image_url).await {
+
                         Ok(image) => {
                             image.add_to_layer(current_layer.clone(), ImageTransform::default());
                         },
+
                         Err(e) => eprintln!("Error adding image to current page: {}", e),
-                    },
+                    }
+
                     Err(e) => eprintln!("Error retrieving png url: {}", e),
                 }
             }
