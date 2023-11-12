@@ -1,11 +1,16 @@
+extern crate printpdf;
+extern crate image;
+
 use std::env;
 use std::fs::File;
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, BufWriter, Cursor};
+
+use std::convert::TryFrom;
 
 use anyhow::{Result, Context};
 use bytes::Bytes;
-use image::{DynamicImage, GenericImageView};
-use image::error::ImageResult;
+use image::io::Reader as ImageReader;
+use printpdf::*;
 use regex::Regex;
 use reqwest;
 use urlencoding::encode;
@@ -29,7 +34,7 @@ async fn main() {
             
                 match get_card_image(&card_name, &set_name).await {
                     Ok(image_url) => match get_card_image_bytes(&image_url).await {
-                        Ok(img_bytes) => println!("Downloaded image with {} bytes", img_bytes.len()),
+                        Ok(img_bytes) => println!("Downloaded image bytes"),
                         Err(e) => eprintln!("Error: {}", e),
                     },
                     Err(e) => eprintln!("Error: {}", e),
@@ -63,8 +68,33 @@ async fn get_card_image(card_name: &str, set_name: &str) -> Result<String> {
 }
 
 
-async fn get_card_image_bytes(png_url: &str) -> Result<Bytes> {
-    Ok(reqwest::get(png_url).await?.bytes().await.context("Could not convert URL to bytes")?)
+async fn get_card_image_bytes(png_url: &str) -> Result<Image> {
+    // downloading image from url to bytes
+    let img_bytes = reqwest::get(png_url).await?.bytes().await.context("Could not convert URL to bytes")?;
+
+    // transforming image bytes to image format required by printpdf
+    let dyn_img = ImageReader::new(Cursor::new(img_bytes)).with_guessed_format()?.decode()?;
+    let image = Image::from_dynamic_image(&dyn_img);
+
+    Ok(image)
+}
+
+
+async fn image_to_pdf(image: Image) -> Result<()> {
+    // pdf creation
+    let (doc, page1, layer1) = PdfDocument::new("PDF_Document_title", Mm(247.0), Mm(210.0), "Layer 1");
+    let current_layer = doc.get_page(page1).get_layer(layer1);
+
+    // translate x, translate y, rotate, scale x, scale y
+    // by default, an image is optimized to 300 DPI (if scale is None)
+    // rotations and translations are always in relation to the lower left corner
+    image.add_to_layer(current_layer.clone(), ImageTransform::default());
+
+    doc.save(&mut BufWriter::new(
+        File::create("test_bookmark.pdf").unwrap(),
+    ))
+    .unwrap();
+    Ok(())
 }
 
 
