@@ -24,8 +24,7 @@ async fn main() {
     }
 
     // pdf creation
-    let (doc, page1, layer1) = PdfDocument::new("PDF_Document_title", Mm(247.0), Mm(210.0), "Layer 1");
-    let current_layer = doc.get_page(page1).get_layer(layer1);
+    let (doc, _, _) = PdfDocument::new("PDF_Document_title", Mm(210.0), Mm(297.0), "Layer 1");
 
     let text_file_path = &args[1];
 
@@ -40,6 +39,11 @@ async fn main() {
                     Ok(image_url) => match get_card_image(&image_url).await {
 
                         Ok(image) => {
+
+                            let (new_page, new_layer) = doc.add_page(Mm(210.0), Mm(297.0), "new page");
+
+                            let current_layer = doc.get_page(new_page).get_layer(new_layer);
+
                             image.add_to_layer(current_layer.clone(), ImageTransform::default());
                         },
 
