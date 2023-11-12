@@ -5,10 +5,7 @@ use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Cursor};
 
-use std::convert::TryFrom;
-
 use anyhow::{Result, Context};
-use bytes::Bytes;
 use image::io::Reader as ImageReader;
 use printpdf::*;
 use regex::Regex;
@@ -21,10 +18,14 @@ async fn main() {
     // Get the command-line arguments
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 2 {
-        eprintln!("Usage: {} <text_file_path>", args[0]);
+    if args.len() != 3 {
+        eprintln!("Usage: {} <text_file_path> {} <target_pdf_path>", args[0], args[1]);
         std::process::exit(1);
     }
+
+    // pdf creation
+    let (doc, page1, layer1) = PdfDocument::new("PDF_Document_title", Mm(247.0), Mm(210.0), "Layer 1");
+    let current_layer = doc.get_page(page1).get_layer(layer1);
 
     let text_file_path = &args[1];
 
@@ -32,20 +33,28 @@ async fn main() {
         Ok(card_data) => {
             for (card_name, set_name) in card_data {
             
-                match get_card_image(&card_name, &set_name).await {
-                    Ok(image_url) => match get_card_image_bytes(&image_url).await {
-                        Ok(img_bytes) => println!("Downloaded image bytes"),
-                        Err(e) => eprintln!("Error: {}", e),
+                match get_card_image_url(&card_name, &set_name).await {
+                    Ok(image_url) => match get_card_image(&image_url).await {
+                        Ok(image) => {
+                            image.add_to_layer(current_layer.clone(), ImageTransform::default());
+                        },
+                        Err(e) => eprintln!("Error adding image to current page: {}", e),
                     },
-                    Err(e) => eprintln!("Error: {}", e),
+                    Err(e) => eprintln!("Error retrieving png url: {}", e),
                 }
             }
         }
-        Err(e) => eprintln!("Error: {}", e),
+        Err(e) => eprintln!("Error parsing the text file: {}", e),
     }
+
+    doc.save(&mut BufWriter::new(
+        File::create(&args[2]).unwrap(),
+    ))
+    .unwrap();
+
 }
 
-async fn get_card_image(card_name: &str, set_name: &str) -> Result<String> {
+async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<String> {
     // URL encoding for card_name and set_name
     let card_name = encode(card_name);
     let set_name = encode(set_name);
@@ -68,7 +77,7 @@ async fn get_card_image(card_name: &str, set_name: &str) -> Result<String> {
 }
 
 
-async fn get_card_image_bytes(png_url: &str) -> Result<Image> {
+async fn get_card_image(png_url: &str) -> Result<Image> {
     // downloading image from url to bytes
     let img_bytes = reqwest::get(png_url).await?.bytes().await.context("Could not convert URL to bytes")?;
 
@@ -77,24 +86,6 @@ async fn get_card_image_bytes(png_url: &str) -> Result<Image> {
     let image = Image::from_dynamic_image(&dyn_img);
 
     Ok(image)
-}
-
-
-async fn image_to_pdf(image: Image) -> Result<()> {
-    // pdf creation
-    let (doc, page1, layer1) = PdfDocument::new("PDF_Document_title", Mm(247.0), Mm(210.0), "Layer 1");
-    let current_layer = doc.get_page(page1).get_layer(layer1);
-
-    // translate x, translate y, rotate, scale x, scale y
-    // by default, an image is optimized to 300 DPI (if scale is None)
-    // rotations and translations are always in relation to the lower left corner
-    image.add_to_layer(current_layer.clone(), ImageTransform::default());
-
-    doc.save(&mut BufWriter::new(
-        File::create("test_bookmark.pdf").unwrap(),
-    ))
-    .unwrap();
-    Ok(())
 }
 
 
