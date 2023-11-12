@@ -3,6 +3,9 @@ use std::fs::File;
 use std::io::{self, BufRead};
 
 use anyhow::{Result, Context};
+use bytes::Bytes;
+use image::{DynamicImage, GenericImageView};
+use image::error::ImageResult;
 use regex::Regex;
 use reqwest;
 use urlencoding::encode;
@@ -25,7 +28,10 @@ async fn main() {
             for (card_name, set_name) in card_data {
             
                 match get_card_image(&card_name, &set_name).await {
-                    Ok(image_url) => println!("{}", image_url),
+                    Ok(image_url) => match get_card_image_bytes(&image_url).await {
+                        Ok(img_bytes) => println!("Downloaded image with {} bytes", img_bytes.len()),
+                        Err(e) => eprintln!("Error: {}", e),
+                    },
                     Err(e) => eprintln!("Error: {}", e),
                 }
             }
@@ -54,6 +60,11 @@ async fn get_card_image(card_name: &str, set_name: &str) -> Result<String> {
     } else {
         anyhow::bail!("Error: Failed to retrieve card data. Status Code: {}", res.status());
     }
+}
+
+
+async fn get_card_image_bytes(png_url: &str) -> Result<Bytes> {
+    Ok(reqwest::get(png_url).await?.bytes().await.context("Could not convert URL to bytes")?)
 }
 
 
