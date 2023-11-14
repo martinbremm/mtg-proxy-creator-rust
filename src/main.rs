@@ -6,7 +6,8 @@ use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Cursor};
 
 use anyhow::{Result, Context};
-use image::io::Reader as ImageReader;
+use image::codecs::png::PngDecoder;
+// use image::io::Reader as ImageReader;
 use printpdf::*;
 use regex::Regex;
 use reqwest;
@@ -64,6 +65,7 @@ async fn main() {
 
 }
 
+
 async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<String> {
     // URL encoding for card_name and set_name
     let card_name = encode(card_name);
@@ -92,8 +94,14 @@ async fn get_card_image(png_url: &str) -> Result<Image> {
     let img_bytes = reqwest::get(png_url).await?.bytes().await.context("Could not convert URL to bytes")?;
 
     // transforming image bytes to image format required by printpdf
-    let dyn_img = ImageReader::new(Cursor::new(img_bytes)).with_guessed_format()?.decode()?;
-    let image = Image::from_dynamic_image(&dyn_img);
+    // let dyn_img = ImageReader::new(Cursor::new(img_bytes)).with_guessed_format()?.decode()?;
+    // let image = Image::from_dynamic_image(&dyn_img);
+    let mut reader = Cursor::new(img_bytes.as_ref());
+
+    let decoder = PngDecoder::new(&mut reader).unwrap();
+    let mut image = Image::try_from(decoder).unwrap();
+
+    image.image = remove_alpha_channel_from_image_x_object(image.image);
 
     Ok(image)
 }
@@ -119,4 +127,43 @@ async fn parse_text_file(txt_path: &str) -> io::Result<Vec<(String, String)>> {
     }
 
     Ok(card_names.into_iter().zip(set_names).collect())
+}
+
+
+// taken from https://github.com/fschutt/printpdf/issues/119
+pub fn remove_alpha_channel_from_image_x_object(image_x_object: ImageXObject) -> ImageXObject {
+    if !matches!(image_x_object.color_space, ColorSpace::Rgba)
+    {
+        return image_x_object;
+    };
+    let ImageXObject {
+        color_space,
+        image_data,
+        ..
+    } = image_x_object;
+
+    let new_image_data = image_data
+        .chunks(4)
+        .map(|rgba| {
+            let [red, green, blue, alpha]: [u8; 4] = rgba.try_into().ok().unwrap();
+            let alpha = alpha as f64 / 255.0;
+            let new_red = ((1.0 - alpha) * 255.0 + alpha * red as f64) as u8;
+            let new_green = ((1.0 - alpha) * 255.0 + alpha * green as f64) as u8;
+            let new_blue = ((1.0 - alpha) * 255.0 + alpha * blue as f64) as u8;
+            return [new_red, new_green, new_blue];
+        })
+        .collect::<Vec<[u8; 3]>>()
+        .concat();
+
+    let new_color_space = match color_space {
+        ColorSpace::Rgba => ColorSpace::Rgb,
+        ColorSpace::GreyscaleAlpha => ColorSpace::Greyscale,
+        other_type => other_type,
+    };
+
+    ImageXObject {
+        color_space: new_color_space,
+        image_data: new_image_data,
+        ..image_x_object
+    }
 }
