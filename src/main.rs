@@ -94,8 +94,6 @@ async fn get_card_image(png_url: &str) -> Result<Image> {
     let img_bytes = reqwest::get(png_url).await?.bytes().await.context("Could not convert URL to bytes")?;
 
     // transforming image bytes to image format required by printpdf
-    // let dyn_img = ImageReader::new(Cursor::new(img_bytes)).with_guessed_format()?.decode()?;
-    // let image = Image::from_dynamic_image(&dyn_img);
     let mut reader = Cursor::new(img_bytes.as_ref());
 
     let decoder = PngDecoder::new(&mut reader).unwrap();
