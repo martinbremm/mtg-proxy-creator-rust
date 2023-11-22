@@ -24,8 +24,11 @@ async fn main() {
         std::process::exit(1);
     }
 
+    let x = 210.0;
+    let y = 297.0;
+
     // pdf creation
-    let (doc, _, _) = PdfDocument::new("PDF_Document_title", Mm(210.0), Mm(297.0), "Layer 1");
+    let (doc, _, _) = PdfDocument::new("PDF_Document_title", Mm(x), Mm(y), "Layer 1");
 
     let text_file_path = &args[1];
 
@@ -41,11 +44,19 @@ async fn main() {
 
                         Ok(image) => {
 
-                            let (new_page, new_layer) = doc.add_page(Mm(210.0), Mm(297.0), "new page");
+                            let (new_page, new_layer) = doc.add_page(Mm(x), Mm(y), "new page");
 
                             let current_layer = doc.get_page(new_page).get_layer(new_layer);
 
-                            image.add_to_layer(current_layer.clone(), ImageTransform::default());
+                            image.add_to_layer(
+                                current_layer.clone(), 
+                                ImageTransform {
+                                    // centering image on the page (mtg card size = 63*88 mm)
+                                    translate_x: Some(Mm(x/2.0 - 63.0/2.0)),
+                                    translate_y: Some(Mm(y/2.0 - 88.0/2.0)),
+                                    ..Default::default()
+                                },
+                            );
                         },
 
                         Err(e) => eprintln!("Error adding image to current page: {}", e),
