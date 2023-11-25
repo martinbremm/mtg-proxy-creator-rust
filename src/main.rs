@@ -1,28 +1,20 @@
 extern crate printpdf;
 extern crate image;
 
-use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Cursor};
 
 use anyhow::{Result, Context};
 use image::codecs::png::PngDecoder;
-// use image::io::Reader as ImageReader;
 use printpdf::*;
 use regex::Regex;
 use reqwest;
+use rfd::FileDialog;
 use urlencoding::encode;
 
 
 #[tokio::main]
 async fn main() {
-    // Get the command-line arguments
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() != 3 {
-        eprintln!("Usage: {} <text_file_path> {} <target_pdf_path>", args[0], args[1]);
-        std::process::exit(1);
-    }
 
     let x = 210.0;
     let y = 297.0;
@@ -30,9 +22,16 @@ async fn main() {
     // pdf creation
     let (doc, _, _) = PdfDocument::new("PDF_Document_title", Mm(x), Mm(y), "Layer 1");
 
-    let text_file_path = &args[1];
 
-    match parse_text_file(text_file_path).await {
+    let file = FileDialog::new()
+        .set_directory("./input")
+        .add_filter("text", &["txt"])
+        .pick_file()
+        .unwrap();
+
+    let text_file_path = file.into_os_string().into_string().unwrap();
+
+    match parse_text_file(&text_file_path).await {
 
         Ok(card_data) => {
             
@@ -70,7 +69,7 @@ async fn main() {
     }
 
     doc.save(&mut BufWriter::new(
-        File::create(&args[2]).unwrap(),
+        File::create("proxies.pdf").unwrap(),
     ))
     .unwrap();
 
