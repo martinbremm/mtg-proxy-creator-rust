@@ -22,57 +22,64 @@ async fn main() {
     // pdf creation
     let (doc, _, _) = PdfDocument::new("PDF_Document_title", Mm(x), Mm(y), "Layer 1");
 
-
     let file = FileDialog::new()
         .set_directory("./input")
         .add_filter("text", &["txt"])
-        .pick_file()
-        .unwrap();
+        .pick_file();
 
-    let text_file_path = file.into_os_string().into_string().unwrap();
+    match file {
+        None => eprintln!("Please select a .txt file including the decklist."),
+        Some(file) => {
+            let text_file_path = file.into_os_string().into_string().unwrap();
 
-    match parse_text_file(&text_file_path).await {
+            match parse_text_file(&text_file_path).await {
 
-        Ok(card_data) => {
-            
-            for (card_name, set_name) in card_data {
-            
-                match get_card_image_url(&card_name, &set_name).await {
+                Ok(card_data) => {
+                    
+                    for (card_name, set_name) in card_data {
+                    
+                        match get_card_image_url(&card_name, &set_name).await {
 
-                    Ok(image_url) => match get_card_image(&image_url).await {
+                            Ok(image_url) => match get_card_image(&image_url).await {
 
-                        Ok(image) => {
+                                Ok(image) => {
 
-                            let (new_page, new_layer) = doc.add_page(Mm(x), Mm(y), "new page");
+                                    let (new_page, new_layer) = doc.add_page(Mm(x), Mm(y), "new page");
 
-                            let current_layer = doc.get_page(new_page).get_layer(new_layer);
+                                    let current_layer = doc.get_page(new_page).get_layer(new_layer);
 
-                            image.add_to_layer(
-                                current_layer.clone(), 
-                                ImageTransform {
-                                    // centering image on the page (mtg card size = 63*88 mm)
-                                    translate_x: Some(Mm(x/2.0 - 63.0/2.0)),
-                                    translate_y: Some(Mm(y/2.0 - 88.0/2.0)),
-                                    ..Default::default()
+                                    image.add_to_layer(
+                                        current_layer.clone(), 
+                                        ImageTransform {
+                                            // centering image on the page (mtg card size = 63*88 mm)
+                                            translate_x: Some(Mm(x/2.0 - 63.0/2.0)),
+                                            translate_y: Some(Mm(y/2.0 - 88.0/2.0)),
+                                            ..Default::default()
+                                        },
+                                    );
                                 },
-                            );
-                        },
 
-                        Err(e) => eprintln!("Error adding image to current page: {}", e),
+                                Err(e) => eprintln!("Error adding image to current page: {}", e),
+                            }
+
+                            Err(e) => eprintln!("Error retrieving png url: {}", e),
+                        }
                     }
-
-                    Err(e) => eprintln!("Error retrieving png url: {}", e),
                 }
+                Err(e) => eprintln!("Error parsing the text file: {}", e),
             }
+            
+            let stem: Vec<&str> = text_file_path.split(".").collect();
+
+            let pdf_filename = format!("{}{}", stem[0], ".pdf");
+
+            doc.save(&mut BufWriter::new(
+                File::create(pdf_filename).unwrap(),
+            ))
+            .unwrap();
+
         }
-        Err(e) => eprintln!("Error parsing the text file: {}", e),
     }
-
-    doc.save(&mut BufWriter::new(
-        File::create("proxies.pdf").unwrap(),
-    ))
-    .unwrap();
-
 }
 
 
