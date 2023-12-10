@@ -35,7 +35,13 @@ async fn main() {
         Some(file) => file,
     };
     
-    let text_file_path = selected_file.into_os_string().into_string().unwrap();
+    let text_file_path = match selected_file.into_os_string().into_string() {
+        Ok(text_file_path) => text_file_path,
+        Err(e) => {
+            eprint!("There was an error parsing the file path: {:?}", e);
+            return;
+        }
+    };
 
     match parse_text_file(&text_file_path).await {
 
