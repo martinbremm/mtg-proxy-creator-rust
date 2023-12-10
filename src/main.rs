@@ -27,56 +27,60 @@ async fn main() {
         .add_filter("text", &["txt"])
         .pick_file();
 
-    match file {
-        None => eprintln!("Please select a .txt file including the decklist."),
-        Some(file) => {
-            let text_file_path = file.into_os_string().into_string().unwrap();
-
-            match parse_text_file(&text_file_path).await {
-
-                Ok(card_data) => {
-                    
-                    for (card_name, set_name) in card_data {
-                    
-                        match get_card_image_url(&card_name, &set_name).await {
-
-                            Ok(image_url) => match get_card_image(&image_url).await {
-
-                                Ok(image) => {
-
-                                    let (new_page, new_layer) = doc.add_page(Mm(x), Mm(y), "new page");
-
-                                    let current_layer = doc.get_page(new_page).get_layer(new_layer);
-
-                                    image.add_to_layer(
-                                        current_layer.clone(), 
-                                        ImageTransform {
-                                            // centering image on the page (mtg card size = 63*88 mm)
-                                            translate_x: Some(Mm(x/2.0 - 63.0/2.0)),
-                                            translate_y: Some(Mm(y/2.0 - 88.0/2.0)),
-                                            ..Default::default()
-                                        },
-                                    );
-                                },
-
-                                Err(e) => eprintln!("Error adding image to current page: {}", e),
-                            }
-
-                            Err(e) => eprintln!("Error retrieving png url: {}", e),
-                        }
-                    }
-                }
-                Err(e) => eprintln!("Error parsing the text file: {}", e),
-            }
-            
-            match save_pdf(&text_file_path, doc) {
-                Ok(saved) => saved,
-                Err(e) => eprintln!("Error saving the text file: {}", e),
-            }
-
+    let selected_file = match file {
+        None => {
+            eprintln!("Please select a .txt file including the decklist.");
+            return;
         }
+        Some(file) => file,
+    };
+    
+    let text_file_path = selected_file.into_os_string().into_string().unwrap();
+
+    match parse_text_file(&text_file_path).await {
+
+        Ok(card_data) => {
+            
+            for (card_name, set_name) in card_data {
+            
+                match get_card_image_url(&card_name, &set_name).await {
+
+                    Ok(image_url) => match get_card_image(&image_url).await {
+
+                        Ok(image) => {
+
+                            let (new_page, new_layer) = doc.add_page(Mm(x), Mm(y), "new page");
+
+                            let current_layer = doc.get_page(new_page).get_layer(new_layer);
+
+                            image.add_to_layer(
+                                current_layer.clone(), 
+                                ImageTransform {
+                                    // centering image on the page (mtg card size = 63*88 mm)
+                                    translate_x: Some(Mm(x/2.0 - 63.0/2.0)),
+                                    translate_y: Some(Mm(y/2.0 - 88.0/2.0)),
+                                    ..Default::default()
+                                },
+                            );
+                        },
+
+                        Err(e) => eprintln!("Error adding image to current page: {}", e),
+                    }
+
+                    Err(e) => eprintln!("Error retrieving png url: {}", e),
+                }
+            }
+        }
+        Err(e) => eprintln!("Error parsing the text file: {}", e),
     }
+    
+    match save_pdf(&text_file_path, doc) {
+        Ok(saved) => saved,
+        Err(e) => eprintln!("Error saving the text file: {}", e),
+    }
+
 }
+    
 
 
 fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<(), String> {
