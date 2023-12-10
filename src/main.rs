@@ -69,17 +69,21 @@ async fn main() {
                 Err(e) => eprintln!("Error parsing the text file: {}", e),
             }
             
-            let stem: Vec<&str> = text_file_path.split(".").collect();
-
-            let pdf_filename = format!("{}{}", stem[0], ".pdf");
-
-            doc.save(&mut BufWriter::new(
-                File::create(pdf_filename).unwrap(),
-            ))
-            .unwrap();
+            match save_pdf(&text_file_path, doc) {
+                Ok(saved) => saved,
+                Err(e) => eprintln!("Error saving the text file: {}", e),
+            }
 
         }
     }
+}
+
+
+fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<(), String> {
+    let stem: Vec<&str> = file_path.split(".").collect();
+    let pdf_filename = format!("{}{}", stem[0], ".pdf");
+    doc.save(&mut BufWriter::new(File::create(pdf_filename).map_err(|e| format!("Error creating file: {}", e))?))
+        .map_err(|e| format!("Error saving PDF: {}", e))
 }
 
 
