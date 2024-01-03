@@ -15,3 +15,5 @@ Cargo.lock
 
 # .pdf files
 *.pdf
+
+*.DS_Store
