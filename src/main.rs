@@ -57,26 +57,32 @@ async fn main() {
     
         match get_card_image_url(&card_name, &set_name).await {
 
-            Ok(image_url) => match get_card_image(&image_url).await {
+            Ok(card_image) => for image_url in card_image {
 
-                Ok(image) => {
+                if let Some(unpacked_image_url) = image_url {
 
-                    let (new_page, new_layer) = doc.add_page(Mm(x), Mm(y), "new page");
+                    match get_card_image(&unpacked_image_url).await {
 
-                    let current_layer = doc.get_page(new_page).get_layer(new_layer);
+                        Ok(image) => {
 
-                    image.add_to_layer(
-                        current_layer.clone(), 
-                        ImageTransform {
-                            // centering image on the page (mtg card size = 63*88 mm)
-                            translate_x: Some(Mm(x/2.0 - 63.0/2.0)),
-                            translate_y: Some(Mm(y/2.0 - 88.0/2.0)),
-                            ..Default::default()
+                            let (new_page, new_layer) = doc.add_page(Mm(x), Mm(y), "new page");
+
+                            let current_layer = doc.get_page(new_page).get_layer(new_layer);
+
+                            image.add_to_layer(
+                                current_layer.clone(), 
+                                ImageTransform {
+                                    // centering image on the page (mtg card size = 63*88 mm)
+                                    translate_x: Some(Mm(x/2.0 - 63.0/2.0)),
+                                    translate_y: Some(Mm(y/2.0 - 88.0/2.0)),
+                                    ..Default::default()
+                                },
+                            );
                         },
-                    );
-                },
 
-                Err(e) => eprintln!("Error adding image to current page: {}", e),
+                        Err(e) => eprintln!("Error adding image to current page: {}", e),
+                    }
+                }
             }
 
             Err(e) => eprintln!("Error retrieving png url: {}", e),
@@ -101,7 +107,22 @@ fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<(), String> {
 }
 
 
-async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<String> {
+#[derive(Debug)]
+struct CardImage {
+    front: Option<String>,
+    back: Option<String>,
+}
+
+impl IntoIterator for CardImage {
+    type Item = Option<String>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        vec![self.front, self.back].into_iter()
+    }
+}
+
+async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<CardImage> {
     // URL encoding for card_name and set_name
     let card_name = encode(card_name);
     let set_name = encode(set_name);
@@ -115,13 +136,48 @@ async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<String> {
 
     if res.status().is_success() {
         let data: serde_json::Value = res.json().await.context("Failed to parse JSON response")?;
-        let image_uris = data["image_uris"].as_object().context("Field 'image_uris' not found in JSON response")?;
-        let png_url = image_uris.get("png").context("Image URL not found in JSON response")?;
-        Ok(png_url.as_str().ok_or_else(|| anyhow::anyhow!("Image URL is not a valid string"))?.to_string())
+
+        if let Some(image_uris) = data["image_uris"].as_object() {
+            if let Some(png_url) = image_uris.get("png") {
+                return Ok(CardImage {
+                    front: Some(png_url.as_str().ok_or_else(|| anyhow::anyhow!("Image URL is not a valid string"))?.to_string()),
+                    back: None,
+                });
+            }
+        }
+
+        if let Some(card_faces) = data["card_faces"].as_array() {
+            let mut front_image_urls: Vec<String> = Vec::new();
+
+            for card_face in card_faces {
+                let image_uris = card_face["image_uris"].as_object().context("Field 'image_uris' not found in JSON response")?;
+                if let Some(png_url) = image_uris.get("png") {
+                    front_image_urls.push(png_url.as_str().ok_or_else(|| anyhow::anyhow!("Image URL is not a valid string"))?.to_string());
+                }
+            }
+
+            // Check for card back images if present
+            if front_image_urls.len() == 2 {
+                let front = front_image_urls.get(0).cloned();
+                let back = front_image_urls.get(1).cloned();
+                return Ok(CardImage { front, back });
+            } else if let front = front_image_urls.get(0).cloned() {
+                return Ok(CardImage { front, back: None });
+            }
+        }
+        // If no image_uris or card_faces were found
+        anyhow::bail!("Image URLs not found in JSON response");
     } else {
         anyhow::bail!("Error: Failed to retrieve card data. Status Code: {}", res.status());
     }
 }
+//         let image_uris = data["image_uris"].as_object().context("Field 'image_uris' not found in JSON response")?;
+//         let png_url = image_uris.get("png").context("Image URL not found in JSON response")?;
+//         Ok(png_url.as_str().ok_or_else(|| anyhow::anyhow!("Image URL is not a valid string"))?.to_string())
+//     } else {
+//         anyhow::bail!("Error: Failed to retrieve card data. Status Code: {}", res.status());
+//     }
+// }
 
 
 async fn get_card_image(png_url: &str) -> Result<Image> {
