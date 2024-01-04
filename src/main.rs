@@ -161,7 +161,8 @@ async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<CardImage
                 let front = front_image_urls.get(0).cloned();
                 let back = front_image_urls.get(1).cloned();
                 return Ok(CardImage { front, back });
-            } else if let front = front_image_urls.get(0).cloned() {
+            } else {
+                let front = front_image_urls.get(0).cloned();
                 return Ok(CardImage { front, back: None });
             }
         }
@@ -171,13 +172,6 @@ async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<CardImage
         anyhow::bail!("Error: Failed to retrieve card data. Status Code: {}", res.status());
     }
 }
-//         let image_uris = data["image_uris"].as_object().context("Field 'image_uris' not found in JSON response")?;
-//         let png_url = image_uris.get("png").context("Image URL not found in JSON response")?;
-//         Ok(png_url.as_str().ok_or_else(|| anyhow::anyhow!("Image URL is not a valid string"))?.to_string())
-//     } else {
-//         anyhow::bail!("Error: Failed to retrieve card data. Status Code: {}", res.status());
-//     }
-// }
 
 
 async fn get_card_image(png_url: &str) -> Result<Image> {
