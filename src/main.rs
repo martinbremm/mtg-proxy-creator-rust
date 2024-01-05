@@ -13,6 +13,8 @@ use reqwest;
 use rfd::FileDialog;
 use urlencoding::encode;
 
+const CARDBACK_IMAGE: &[u8] = include_bytes!("../image/magic_card_back.png");
+
 #[tokio::main]
 async fn main() {
     let x = 210.0;
@@ -199,8 +201,9 @@ async fn get_card_image(png_url: Option<String>) -> Result<Image> {
         image.image = remove_alpha_channel_from_image_x_object(image.image);
         Ok(image)
     } else {
-        let img_reader =
-            ImageReader::open("image/Magic_card_back.png").context("Failed to open local image")?;
+        let img_reader = ImageReader::new(Cursor::new(CARDBACK_IMAGE))
+            .with_guessed_format()
+            .context("Failed to open card back image")?;
         let dynamic_image = img_reader
             .decode()
             .context("Failed to decode local image")?;
