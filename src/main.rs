@@ -15,6 +15,21 @@ use urlencoding::encode;
 
 const CARDBACK_IMAGE: &[u8] = include_bytes!("../image/magic_card_back.png");
 
+#[derive(Debug)]
+struct CardImage {
+    front: Option<String>,
+    back: Option<String>,
+}
+
+impl IntoIterator for CardImage {
+    type Item = Option<String>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        vec![self.front, self.back].into_iter()
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let x = 210.0;
@@ -95,21 +110,6 @@ fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<(), String> {
         File::create(pdf_filename).map_err(|e| format!("Error creating file: {}", e))?,
     ))
     .map_err(|e| format!("Error saving PDF: {}", e))
-}
-
-#[derive(Debug)]
-struct CardImage {
-    front: Option<String>,
-    back: Option<String>,
-}
-
-impl IntoIterator for CardImage {
-    type Item = Option<String>;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        vec![self.front, self.back].into_iter()
-    }
 }
 
 async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<CardImage> {
