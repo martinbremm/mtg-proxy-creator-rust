@@ -35,9 +35,6 @@ async fn main() {
     let x = 210.0;
     let y = 297.0;
 
-    // pdf creation
-    let (doc, _, _) = PdfDocument::new("PDF_Document_title", Mm(x), Mm(y), "Layer 1");
-
     let file = FileDialog::new()
         .set_directory("./input")
         .add_filter("text", &["txt"])
@@ -50,6 +47,11 @@ async fn main() {
         }
         Some(file) => file,
     };
+
+    let start: std::time::Instant = std::time::Instant::now();
+
+    // pdf creation
+    let (doc, _, _) = PdfDocument::new("PDF_Document_title", Mm(x), Mm(y), "Layer 1");
 
     let text_file_path = match selected_file.into_os_string().into_string() {
         Ok(text_file_path) => text_file_path,
@@ -101,6 +103,8 @@ async fn main() {
         Ok(saved) => saved,
         Err(e) => eprintln!("Error saving the text file: {}", e),
     }
+
+    eprintln!("{:.2?}", start.elapsed());
 }
 
 fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<(), String> {
