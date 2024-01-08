@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Cursor};
 
 use anyhow::{Context, Result};
+use futures::future::join_all;
 use image::codecs::png::PngDecoder;
 use image::io::Reader as ImageReader;
 use printpdf::*;
@@ -69,33 +70,46 @@ async fn main() {
         }
     };
 
+    let mut image_futures = vec![];
     for (card_name, set_name) in card_data {
-        match get_card_image_url(&card_name, &set_name).await {
-            Ok(card_image) => {
-                for image_url in card_image {
-                    match get_card_image(image_url).await {
-                        Ok(image) => {
-                            let (new_page, new_layer) = doc.add_page(Mm(x), Mm(y), "new page");
+        if let Ok(card_image) = get_card_image_url(&card_name, &set_name).await {
+            for image_url in card_image {
+                let image_future = tokio::spawn(get_card_image(image_url));
+                image_futures.push(image_future);
+            }
+        } else {
+            eprintln!(
+                "Error retrieving png url for card: {} from set: {}",
+                card_name, set_name
+            );
+        }
+    }
 
-                            let current_layer = doc.get_page(new_page).get_layer(new_layer);
+    let images = join_all(image_futures).await;
 
-                            image.add_to_layer(
-                                current_layer.clone(),
-                                ImageTransform {
-                                    // centering image on the page (mtg card size = 63*88 mm)
-                                    translate_x: Some(Mm(x / 2.0 - 63.0 / 2.0)),
-                                    translate_y: Some(Mm(y / 2.0 - 88.0 / 2.0)),
-                                    ..Default::default()
-                                },
-                            );
-                        }
+    for image_result in images {
+        match image_result {
+            Ok(image) => {
+                match image {
+                    Ok(image) => {
+                        let (new_page, new_layer) = doc.add_page(Mm(x), Mm(y), "new page");
 
-                        Err(e) => eprintln!("Error adding image to current page: {}", e),
+                        let current_layer = doc.get_page(new_page).get_layer(new_layer);
+
+                        image.add_to_layer(
+                            current_layer.clone(),
+                            ImageTransform {
+                                // centering image on the page (mtg card size = 63*88 mm)
+                                translate_x: Some(Mm(x / 2.0 - 63.0 / 2.0)),
+                                translate_y: Some(Mm(y / 2.0 - 88.0 / 2.0)),
+                                ..Default::default()
+                            },
+                        );
                     }
+                    Err(e) => eprintln!("Error getting image: {}", e),
                 }
             }
-
-            Err(e) => eprintln!("Error retrieving png url: {}", e),
+            Err(e) => eprintln!("Error resolving image future: {}", e),
         }
     }
 
