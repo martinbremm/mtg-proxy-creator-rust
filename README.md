@@ -55,12 +55,28 @@ This Rust-based project fetches images of Magic: The Gathering (MTG) cards from 
 - This project uses the [Scryfall API](https://scryfall.com/docs/api) for fetching card images.
 - Portions of the code are adapted from various Rust libraries and contributors.
 
-## Contributors
+## Contributing
 
 - Martin Bremm ([Your GitHub](https://github.com/martinbremm))
 
+If you want others to contribute to your project, provide guidelines on how they can do so. Include information on submitting bug reports, feature requests, or pull requests.
+
+```markdown
+## Contributing Guidelines
+
+1. Fork the repository
+2. Create a new branch: `git checkout -b feature/your-feature`
+3. Make your changes and commit them: `git commit -m 'Add new feature'`
+4. Push to the branch: `git push origin feature/your-feature`
+5. Submit a pull request
+```
+
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
----
+```
+Apache License
+Version 2.0, January 2004
+http://www.apache.org/licenses/
+```
