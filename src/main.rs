@@ -12,6 +12,7 @@ use printpdf::*;
 use regex::Regex;
 use reqwest;
 use rfd::FileDialog;
+use tokio::time::{sleep, Duration};
 use urlencoding::encode;
 
 const CARDBACK_IMAGE: &[u8] = include_bytes!("../image/magic_card_back.png");
@@ -71,6 +72,9 @@ async fn main() {
     };
 
     let mut image_futures = vec![];
+
+    let mut requests_count: i32 = 0;
+
     for (card_name, set_name) in card_data {
         if let Ok(card_image) = get_card_image_url(&card_name, &set_name).await {
             for image_url in card_image {
@@ -83,6 +87,16 @@ async fn main() {
                 card_name, set_name
             );
         }
+        requests_count += 1;
+
+        println!(
+            "Downloading image for card {} from set {}",
+            card_name, set_name
+        );
+
+        // 50 millisecond delay between scryfall requests due to rate limits
+        sleep(Duration::from_millis(50)).await;
+        // println!("50 ms pause between request");
     }
 
     let images = join_all(image_futures).await;
@@ -114,20 +128,25 @@ async fn main() {
     }
 
     match save_pdf(&text_file_path, doc) {
-        Ok(saved) => saved,
+        Ok(pdf_filepath) => println!("Saving pdf to path: {}", pdf_filepath),
         Err(e) => eprintln!("Error saving the text file: {}", e),
     }
 
-    eprintln!("{:.2?}", start.elapsed());
+    println!("Total number of scryfall requests: {}", requests_count);
+    println!("Total processing time: {:.2?}", start.elapsed());
 }
 
-fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<(), String> {
+fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<String> {
     let stem: Vec<&str> = file_path.split(".").collect();
-    let pdf_filename = format!("{}{}", stem[0], ".pdf");
-    doc.save(&mut BufWriter::new(
-        File::create(pdf_filename).map_err(|e| format!("Error creating file: {}", e))?,
-    ))
-    .map_err(|e| format!("Error saving PDF: {}", e))
+    let pdf_filepath = format!("{}{}", stem[0], ".pdf");
+    let file = File::create(&pdf_filepath)?;
+    let mut writer = BufWriter::new(file);
+    doc.save(&mut writer)?;
+    // doc.save(&mut BufWriter::new(
+    //     File::create(pdf_filepath.clone()).map_err(|e| format!("Error creating file: {}", e)),
+    // ))
+    // .map_err(|e| format!("Error saving PDF: {}", e));
+    Ok(pdf_filepath)
 }
 
 async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<CardImage> {
