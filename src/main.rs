@@ -253,18 +253,25 @@ async fn get_card_image(png_url: Option<String>) -> Result<Image> {
 async fn parse_text_file(txt_path: &str) -> io::Result<Vec<(String, String)>> {
     let mut card_names = Vec::new();
     let mut set_names = Vec::new();
-    let card_pattern = Regex::new(r"\d (.*) \(").unwrap();
+    let mut card_pattern = Regex::new(r"\d (.*) \(").unwrap();
     let set_pattern = Regex::new(r"\(([a-zA-Z0-9]*)\)").unwrap();
 
     let file = File::open(txt_path)?;
 
     for line in io::BufReader::new(file).lines() {
         let line = line?;
+
+        if !line.contains("(") {
+            card_pattern = Regex::new(r"\d (.*)").unwrap();
+        }
         if let (Some(card_match), Some(set_match)) =
             (card_pattern.captures(&line), set_pattern.captures(&line))
         {
             card_names.push(card_match[1].to_string());
             set_names.push(set_match[1].to_string());
+        } else if let Some(card_match) = card_pattern.captures(&line) {
+            card_names.push(card_match[1].to_string());
+            set_names.push(String::new());
         } else {
             // Handle lines that don't match the expected format
             eprintln!("Warning: Skipped line - {}", line.trim());
