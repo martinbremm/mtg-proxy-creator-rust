@@ -18,12 +18,12 @@ use urlencoding::encode;
 const CARDBACK_IMAGE: &[u8] = include_bytes!("../image/magic_card_back.png");
 
 #[derive(Debug)]
-struct CardImage {
+struct CardImageUrls {
     front: Option<String>,
     back: Option<String>,
 }
 
-impl IntoIterator for CardImage {
+impl IntoIterator for CardImageUrls {
     type Item = Option<String>;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
@@ -63,7 +63,15 @@ async fn main() {
         }
     };
 
-    let card_data = match parse_text_file(&text_file_path).await {
+    let file = match File::open(&text_file_path) {
+        Ok(file) => file,
+        Err(e) => {
+            eprint!("There was an error opening the file: {:?}", e);
+            return;
+        }
+    };
+
+    let card_data = match parse_text_file(file).await {
         Ok(card_data) => card_data,
         Err(e) => {
             eprintln!("Error parsing the text file: {}", e);
@@ -76,7 +84,7 @@ async fn main() {
     let mut requests_count: i32 = 0;
 
     for (card_name, set_name) in card_data {
-        if let Ok(card_image) = get_card_image_url(&card_name, &set_name).await {
+        if let Ok(card_image) = get_card_image_url(&card_name, &set_name, "png").await {
             for image_url in card_image {
                 let image_future = tokio::spawn(get_card_image(image_url));
                 image_futures.push(image_future);
@@ -149,7 +157,11 @@ fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<String> {
     Ok(pdf_filepath)
 }
 
-async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<CardImage> {
+async fn get_card_image_url(
+    card_name: &str,
+    set_name: &str,
+    format: &str,
+) -> Result<CardImageUrls> {
     // URL encoding for card_name and set_name
     let card_name = encode(card_name);
     let set_name = encode(set_name);
@@ -167,8 +179,8 @@ async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<CardImage
         let data: serde_json::Value = res.json().await.context("Failed to parse JSON response")?;
 
         if let Some(image_uris) = data["image_uris"].as_object() {
-            if let Some(png_url) = image_uris.get("png") {
-                return Ok(CardImage {
+            if let Some(png_url) = image_uris.get(format) {
+                return Ok(CardImageUrls {
                     front: Some(
                         png_url
                             .as_str()
@@ -187,7 +199,7 @@ async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<CardImage
                 let image_uris = card_face["image_uris"]
                     .as_object()
                     .context("Field 'image_uris' not found in JSON response")?;
-                if let Some(png_url) = image_uris.get("png") {
+                if let Some(png_url) = image_uris.get(format) {
                     front_image_urls.push(
                         png_url
                             .as_str()
@@ -201,10 +213,10 @@ async fn get_card_image_url(card_name: &str, set_name: &str) -> Result<CardImage
             if front_image_urls.len() == 2 {
                 let front = front_image_urls.get(0).cloned();
                 let back = front_image_urls.get(1).cloned();
-                return Ok(CardImage { front, back });
+                return Ok(CardImageUrls { front, back });
             } else {
                 let front = front_image_urls.get(0).cloned();
-                return Ok(CardImage { front, back: None });
+                return Ok(CardImageUrls { front, back: None });
             }
         }
         // If no image_uris or card_faces were found
@@ -250,13 +262,11 @@ async fn get_card_image(png_url: Option<String>) -> Result<Image> {
     }
 }
 
-async fn parse_text_file(txt_path: &str) -> io::Result<Vec<(String, String)>> {
+async fn parse_text_file(file: File) -> io::Result<Vec<(String, String)>> {
     let mut card_names = Vec::new();
     let mut set_names = Vec::new();
     let mut card_pattern = Regex::new(r"\d (.*) \(").unwrap();
     let set_pattern = Regex::new(r"\(([a-zA-Z0-9]*)\)").unwrap();
-
-    let file = File::open(txt_path)?;
 
     for line in io::BufReader::new(file).lines() {
         let line = line?;
