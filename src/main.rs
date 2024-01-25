@@ -52,9 +52,6 @@ async fn main() {
 
     let start: std::time::Instant = std::time::Instant::now();
 
-    // pdf creation
-    let (doc, _, _) = PdfDocument::new("PDF_Document_title", Mm(x), Mm(y), "Layer 1");
-
     let text_file_path = match selected_file.into_os_string().into_string() {
         Ok(text_file_path) => text_file_path,
         Err(e) => {
@@ -109,14 +106,17 @@ async fn main() {
 
     let images = join_all(image_futures).await;
 
+    // pdf creation
+    let (doc, mut page, layer) = PdfDocument::new("PDF_Document_title", Mm(x), Mm(y), "Layer 1");
+
     for image_result in images {
         match image_result {
             Ok(image) => {
                 match image {
                     Ok(image) => {
-                        let (new_page, new_layer) = doc.add_page(Mm(x), Mm(y), "new page");
+                        let current_layer = doc.get_page(page).get_layer(layer);
 
-                        let current_layer = doc.get_page(new_page).get_layer(new_layer);
+                        (page, _) = doc.add_page(Mm(x), Mm(y), "new_layer");
 
                         image.add_to_layer(
                             current_layer.clone(),
