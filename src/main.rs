@@ -150,10 +150,6 @@ fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<String> {
     let file = File::create(&pdf_filepath)?;
     let mut writer = BufWriter::new(file);
     doc.save(&mut writer)?;
-    // doc.save(&mut BufWriter::new(
-    //     File::create(pdf_filepath.clone()).map_err(|e| format!("Error creating file: {}", e)),
-    // ))
-    // .map_err(|e| format!("Error saving PDF: {}", e));
     Ok(pdf_filepath)
 }
 
