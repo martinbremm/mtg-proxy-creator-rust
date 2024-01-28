@@ -16,6 +16,8 @@ use tokio::time::{sleep, Duration};
 use urlencoding::encode;
 
 const CARDBACK_IMAGE: &[u8] = include_bytes!("../image/magic_card_back.png");
+const PAGE_X: f64 = 210.0;
+const PAGE_Y: f64 = 297.0;
 
 #[derive(Debug)]
 struct CardImageUrls {
@@ -34,9 +36,6 @@ impl IntoIterator for CardImageUrls {
 
 #[tokio::main]
 async fn main() {
-    let x = 210.0;
-    let y = 297.0;
-
     let file = FileDialog::new()
         .set_directory("./input")
         .add_filter("text", &["txt"])
@@ -107,7 +106,8 @@ async fn main() {
     let images = join_all(image_futures).await;
 
     // pdf creation
-    let (doc, mut page, layer) = PdfDocument::new("PDF_Document_title", Mm(x), Mm(y), "Layer 1");
+    let (doc, mut page, layer) =
+        PdfDocument::new("PDF_Document_title", Mm(PAGE_X), Mm(PAGE_Y), "Layer 1");
 
     for image_result in images {
         match image_result {
@@ -116,14 +116,14 @@ async fn main() {
                     Ok(image) => {
                         let current_layer = doc.get_page(page).get_layer(layer);
 
-                        (page, _) = doc.add_page(Mm(x), Mm(y), "new_layer");
+                        (page, _) = doc.add_page(Mm(PAGE_X), Mm(PAGE_Y), "new_layer");
 
                         image.add_to_layer(
                             current_layer.clone(),
                             ImageTransform {
                                 // centering image on the page (mtg card size = 63*88 mm)
-                                translate_x: Some(Mm(x / 2.0 - 63.0 / 2.0)),
-                                translate_y: Some(Mm(y / 2.0 - 88.0 / 2.0)),
+                                translate_x: Some(Mm(PAGE_X / 2.0 - (63.0 / 2.0))),
+                                translate_y: Some(Mm(PAGE_Y / 2.0 - (88.0 / 2.0))),
                                 ..Default::default()
                             },
                         );
