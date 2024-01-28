@@ -80,27 +80,30 @@ async fn main() {
     let mut requests_count: i32 = 0;
 
     for (card_name, set_name) in card_data {
-        if let Ok(card_image) = get_card_image_url(&card_name, &set_name, "png").await {
-            for image_url in card_image {
-                let image_future = tokio::spawn(get_card_image(image_url));
-                image_futures.push(image_future);
+        match get_card_image_url(&card_name, &set_name, "png").await {
+            Ok(card_image) => {
+                for image_url in card_image {
+                    let image_future = tokio::spawn(get_card_image(image_url));
+                    image_futures.push(image_future);
+                }
+
+                println!(
+                    "Downloading image for card {} from set {}",
+                    card_name, set_name
+                );
+
+                requests_count += 1;
+
+                // 50 millisecond delay between scryfall requests due to rate limits
+                sleep(Duration::from_millis(50)).await;
+                // println!("50 ms pause between request");
             }
-
-            println!(
-                "Downloading image for card {} from set {}",
-                card_name, set_name
-            );
-
-            requests_count += 1;
-
-            // 50 millisecond delay between scryfall requests due to rate limits
-            sleep(Duration::from_millis(50)).await;
-            // println!("50 ms pause between request");
-        } else {
-            eprintln!(
-                "Error retrieving png url for card: {} from set: {}",
-                card_name, set_name
-            );
+            Err(e) => {
+                eprintln!(
+                    "Error retrieving png url for card: {} from set: {} => {}",
+                    card_name, set_name, e
+                );
+            }
         }
     }
 
