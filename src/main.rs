@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Cursor};
 
 use anyhow::{Context, Result};
-use futures::future::join_all;
+use futures::future::try_join_all;
 use image::codecs::png::PngDecoder;
 use image::io::Reader as ImageReader;
 use printpdf::*;
@@ -85,53 +85,49 @@ async fn main() {
                 let image_future = tokio::spawn(get_card_image(image_url));
                 image_futures.push(image_future);
             }
+
+            println!(
+                "Downloading image for card {} from set {}",
+                card_name, set_name
+            );
+
+            requests_count += 1;
+
+            // 50 millisecond delay between scryfall requests due to rate limits
+            sleep(Duration::from_millis(50)).await;
+            // println!("50 ms pause between request");
         } else {
             eprintln!(
                 "Error retrieving png url for card: {} from set: {}",
                 card_name, set_name
             );
         }
-        requests_count += 1;
-
-        println!(
-            "Downloading image for card {} from set {}",
-            card_name, set_name
-        );
-
-        // 50 millisecond delay between scryfall requests due to rate limits
-        sleep(Duration::from_millis(50)).await;
-        // println!("50 ms pause between request");
     }
 
-    let images = join_all(image_futures).await;
+    let images = try_join_all(image_futures).await.unwrap();
 
     // pdf creation
     let (doc, mut page, layer) =
         PdfDocument::new("PDF_Document_title", Mm(PAGE_X), Mm(PAGE_Y), "Layer 1");
 
-    for image_result in images {
-        match image_result {
+    for image in images {
+        match image {
             Ok(image) => {
-                match image {
-                    Ok(image) => {
-                        let current_layer = doc.get_page(page).get_layer(layer);
+                let current_layer = doc.get_page(page).get_layer(layer);
 
-                        (page, _) = doc.add_page(Mm(PAGE_X), Mm(PAGE_Y), "new_layer");
+                (page, _) = doc.add_page(Mm(PAGE_X), Mm(PAGE_Y), "new_layer");
 
-                        image.add_to_layer(
-                            current_layer.clone(),
-                            ImageTransform {
-                                // centering image on the page (mtg card size = 63*88 mm)
-                                translate_x: Some(Mm(PAGE_X / 2.0 - (63.0 / 2.0))),
-                                translate_y: Some(Mm(PAGE_Y / 2.0 - (88.0 / 2.0))),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    Err(e) => eprintln!("Error getting image: {}", e),
-                }
+                image.add_to_layer(
+                    current_layer.clone(),
+                    ImageTransform {
+                        // centering image on the page (mtg card size = 63*88 mm)
+                        translate_x: Some(Mm(PAGE_X / 2.0 - (63.0 / 2.0))),
+                        translate_y: Some(Mm(PAGE_Y / 2.0 - (88.0 / 2.0))),
+                        ..Default::default()
+                    },
+                );
             }
-            Err(e) => eprintln!("Error resolving image future: {}", e),
+            Err(e) => eprintln!("Error getting image: {}", e),
         }
     }
 
