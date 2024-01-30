@@ -1,8 +1,10 @@
 extern crate image;
 extern crate printpdf;
 
+use std::env::consts::OS;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Cursor};
+use std::process::Command;
 
 use anyhow::{Context, Result};
 use futures::future::try_join_all;
@@ -135,12 +137,25 @@ async fn main() {
     }
 
     match save_pdf(&text_file_path, doc) {
-        Ok(pdf_filepath) => println!("Saving pdf to path: {}", pdf_filepath),
+        Ok(pdf_filepath) => {
+            println!("Saving pdf to path: {}", pdf_filepath);
+            open_file_in_explorer(&pdf_filepath);
+        }
         Err(e) => eprintln!("Error saving the text file: {}", e),
     }
 
     println!("Total number of scryfall requests: {}", requests_count);
     println!("Total processing time: {:.2?}", start.elapsed());
+}
+
+fn open_file_in_explorer(file_path: &str) {
+    let command = match OS {
+        "linux" => "xdg-open",
+        "macos" => "open",
+        "windows" => "explorer",
+        _ => "",
+    };
+    Command::new(command).arg(file_path).spawn().unwrap();
 }
 
 fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<String> {
