@@ -12,7 +12,7 @@ use image::codecs::png::PngDecoder;
 use image::io::Reader as ImageReader;
 use printpdf::*;
 use regex::Regex;
-use reqwest;
+use reqwest::{self, Client};
 use rfd::FileDialog;
 use tokio::time::{sleep, Duration};
 use urlencoding::encode;
@@ -35,6 +35,8 @@ impl IntoIterator for CardImageUrls {
         vec![self.front, self.back].into_iter()
     }
 }
+
+static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 #[tokio::main]
 async fn main() {
@@ -81,8 +83,13 @@ async fn main() {
 
     let mut requests_count: i32 = 0;
 
+    let client = reqwest::Client::builder()
+        .user_agent(APP_USER_AGENT)
+        .build()
+        .unwrap();
+
     for (card_name, set_name) in card_data {
-        match get_card_image_url(&card_name, &set_name, "png").await {
+        match get_card_image_url(&client, &card_name, &set_name, "png").await {
             Ok(card_image) => {
                 for image_url in card_image {
                     let image_future = tokio::spawn(get_card_image(image_url));
@@ -168,6 +175,7 @@ fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<String> {
 }
 
 async fn get_card_image_url(
+    client: &Client,
     card_name: &str,
     set_name: &str,
     format: &str,
@@ -181,9 +189,13 @@ async fn get_card_image_url(
         card_name, set_name
     );
 
-    let res = reqwest::get(&url)
+    let res = client
+        .get(&url)
+        .send()
         .await
         .context("Failed to make request to Scryfall API")?;
+
+    println!("Scryfall Request Response Satus: {}", res.status());
 
     if res.status().is_success() {
         let data: serde_json::Value = res.json().await.context("Failed to parse JSON response")?;
