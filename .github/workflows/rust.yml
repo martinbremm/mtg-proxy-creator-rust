@@ -27,3 +27,8 @@ jobs:
         run: cargo build --profile ${{ matrix.BUILD_TARGET }}
       - name: Run tests in "${{ matrix.BUILD_TARGET }}" mode
         run: cargo test --profile ${{ matrix.BUILD_TARGET }}
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtg-proxy-creator-rust
+          path: target/${{ matrix.BUILD_TARGET }}/mtg-proxy-creator-rust
