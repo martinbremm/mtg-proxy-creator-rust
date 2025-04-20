@@ -53,4 +53,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mtg-proxy-creator-rust-${{ matrix.os }}
-          path: target/${{ matrix.target }}/release/mtg-proxy-creator-rust
+          path: |
+            target/${{ matrix.target }}/release/mtg-proxy-creator-rust
+            target/${{ matrix.target }}/release/mtg-proxy-creator-rust.exe
