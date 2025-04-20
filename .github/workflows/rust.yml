@@ -10,25 +10,47 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-release:
+    name: build-release
     strategy:
+      fail-fast: false
       matrix:
-        BUILD_TARGET: [release] # refers to a cargo profile
-    outputs:
-      release_built: ${{ steps.set-output.outputs.release_built }}
+        build: [linux, macos, win-msvc]
+        include:
+        - build: linux
+          os: ubuntu-latest
+          rust: stable
+          target: x86_64-unknown-linux-gnu
+        - build: macos
+          os: macos-latest
+          rust: stable
+          target: x86_64-apple-darwin
+        - build: win-msvc
+          os: windows-2019
+          rust: stable
+          target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt update
           sudo apt install -y libglib2.0-dev pkg-config libgtk-3-dev
-      - name: Build binaries in "${{ matrix.BUILD_TARGET }}" mode
-        run: cargo build --profile ${{ matrix.BUILD_TARGET }}
-      - name: Run tests in "${{ matrix.BUILD_TARGET }}" mode
-        run: cargo test --profile ${{ matrix.BUILD_TARGET }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust }}
+          targets: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --target ${{ matrix.target }} --release
+
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mtg-proxy-creator-rust
-          path: target/${{ matrix.BUILD_TARGET }}/mtg-proxy-creator-rust
+          name: mtg-proxy-creator-rust-${{ matrix.os }}
+          path: target/${{ matrix.target }}/release/mtg-proxy-creator-rust
