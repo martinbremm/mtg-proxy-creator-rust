@@ -20,6 +20,11 @@ use urlencoding::encode;
 const CARDBACK_IMAGE: &[u8] = include_bytes!("../image/magic_card_back.png");
 const PAGE_X: f64 = 210.0;
 const PAGE_Y: f64 = 297.0;
+// Constants for card size and grid layout
+const CARD_WIDTH_MM: f64 = 63.0;
+const CARD_HEIGHT_MM: f64 = 88.0;
+const GRID_COLS: usize = 3;
+const GRID_ROWS: usize = 3;
 
 #[derive(Debug)]
 struct CardImageUrls {
@@ -88,13 +93,13 @@ async fn main() {
         .build()
         .unwrap();
 
+    let cards_per_page = GRID_COLS * GRID_ROWS;
+
     for (card_name, set_name) in card_data {
         match get_card_image_url(&client, &card_name, &set_name, "png").await {
             Ok(card_image) => {
-                for image_url in card_image {
-                    let image_future = tokio::spawn(get_card_image(image_url));
-                    image_futures.push(image_future);
-                }
+                let image_future = tokio::spawn(get_card_image(card_image.front));
+                image_futures.push(image_future);
 
                 println!(
                     "Downloading image for card {} from set {}",
@@ -123,29 +128,40 @@ async fn main() {
     let (doc, mut page, mut layer) =
         PdfDocument::new("PDF_Document_title", Mm(PAGE_X), Mm(PAGE_Y), "Layer 1");
 
-    let images_length = images.len(); // Store the length before moving the vector
-
     for (i, image) in images.into_iter().enumerate() {
         match image {
             Ok(image) => {
-                let layer_ref = doc.get_page(page).get_layer(layer);
-
-                image.add_to_layer(
-                    layer_ref,
-                    ImageTransform {
-                        // centering image on the page (mtg card size = 63*88 mm)
-                        translate_x: Some(Mm(PAGE_X / 2.0 - (63.0 / 2.0))),
-                        translate_y: Some(Mm(PAGE_Y / 2.0 - (88.0 / 2.0))),
-                        ..Default::default()
-                    },
-                );
-
-                // Add new page/layer ONLY IF more images follow
-                if i < images_length - 1 {
+                if (i % cards_per_page == 0) & (i > 0) {
                     let (new_page, new_layer) = doc.add_page(Mm(PAGE_X), Mm(PAGE_Y), "new_layer");
                     page = new_page;
                     layer = new_layer;
                 }
+
+                let current_layer_ref = doc.get_page(page).get_layer(layer);
+
+                // Column and row position in grid
+                let col = i % GRID_COLS;
+                let row = (i / GRID_COLS) % GRID_ROWS;
+
+                // Calculate spacing to center grid on the page
+                let total_grid_width = CARD_WIDTH_MM * GRID_COLS as f64;
+                let total_grid_height = CARD_HEIGHT_MM * GRID_ROWS as f64;
+
+                let x_offset = (PAGE_X - total_grid_width) / 2.0;
+                let y_offset = (PAGE_Y - total_grid_height) / 2.0;
+
+                // Calculate position
+                let x = Mm(x_offset + CARD_WIDTH_MM * col as f64);
+                let y = Mm(PAGE_Y - y_offset - CARD_HEIGHT_MM * (row as f64 + 1.0)); // position of bottom-left corner of image -> decrease position by one card image height
+
+                image.add_to_layer(
+                    current_layer_ref,
+                    ImageTransform {
+                        translate_x: Some(x),
+                        translate_y: Some(y),
+                        ..Default::default()
+                    },
+                );
             }
             Err(e) => eprintln!("Error getting image: {}", e),
         }
