@@ -120,21 +120,18 @@ async fn main() {
         try_join_all(image_futures).await.unwrap();
 
     // pdf creation
-    let (doc, page, layer) =
+    let (doc, mut page, mut layer) =
         PdfDocument::new("PDF_Document_title", Mm(PAGE_X), Mm(PAGE_Y), "Layer 1");
-
-    let mut current_page = page;
-    let mut current_layer = layer;
 
     let images_length = images.len(); // Store the length before moving the vector
 
     for (i, image) in images.into_iter().enumerate() {
         match image {
             Ok(image) => {
-                let current_layer_ref = doc.get_page(current_page).get_layer(current_layer);
+                let layer_ref = doc.get_page(page).get_layer(layer);
 
                 image.add_to_layer(
-                    current_layer_ref,
+                    layer_ref,
                     ImageTransform {
                         // centering image on the page (mtg card size = 63*88 mm)
                         translate_x: Some(Mm(PAGE_X / 2.0 - (63.0 / 2.0))),
@@ -146,8 +143,8 @@ async fn main() {
                 // Add new page/layer ONLY IF more images follow
                 if i < images_length - 1 {
                     let (new_page, new_layer) = doc.add_page(Mm(PAGE_X), Mm(PAGE_Y), "new_layer");
-                    current_page = new_page;
-                    current_layer = new_layer;
+                    page = new_page;
+                    layer = new_layer;
                 }
             }
             Err(e) => eprintln!("Error getting image: {}", e),
