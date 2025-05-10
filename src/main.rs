@@ -45,6 +45,7 @@ static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_P
 
 #[tokio::main]
 async fn main() {
+    let grid: bool = false;
     let file = FileDialog::new()
         .set_directory("./input")
         .add_filter("text", &["txt"])
@@ -85,21 +86,25 @@ async fn main() {
     };
 
     let mut image_futures = vec![];
-
     let mut requests_count: i32 = 0;
-
     let client = reqwest::Client::builder()
         .user_agent(APP_USER_AGENT)
         .build()
         .unwrap();
-
     let cards_per_page = GRID_COLS * GRID_ROWS;
 
     for (card_name, set_name) in card_data {
         match get_card_image_url(&client, &card_name, &set_name, "png").await {
             Ok(card_image) => {
-                let image_future = tokio::spawn(get_card_image(card_image.front));
-                image_futures.push(image_future);
+                if grid {
+                    let image_future = tokio::spawn(get_card_image(card_image.front));
+                    image_futures.push(image_future);
+                } else {
+                    for image_url in card_image {
+                        let image_future = tokio::spawn(get_card_image(image_url));
+                        image_futures.push(image_future);
+                    }
+                }
 
                 println!(
                     "Downloading image for card {} from set {}",
@@ -107,10 +112,7 @@ async fn main() {
                 );
 
                 requests_count += 1;
-
-                // 50 millisecond delay between scryfall requests due to rate limits
                 sleep(Duration::from_millis(50)).await;
-                // println!("50 ms pause between request");
             }
             Err(e) => {
                 eprintln!(
@@ -124,10 +126,23 @@ async fn main() {
     let images: Vec<std::result::Result<Image, anyhow::Error>> =
         try_join_all(image_futures).await.unwrap();
 
-    // pdf creation
+    if grid {
+        create_pdf_grid(&text_file_path, images, cards_per_page);
+    } else {
+        create_pdf_single(&text_file_path, images);
+    }
+
+    println!("Total number of scryfall requests: {}", requests_count);
+    println!("Total processing time: {:.2?}", start.elapsed());
+}
+
+fn create_pdf_grid(
+    text_file_path: &str,
+    images: Vec<std::result::Result<Image, anyhow::Error>>,
+    cards_per_page: usize,
+) {
     let (doc, mut page, mut layer) =
         PdfDocument::new("PDF_Document_title", Mm(PAGE_X), Mm(PAGE_Y), "Layer 1");
-
     for (i, image) in images.into_iter().enumerate() {
         match image {
             Ok(image) => {
@@ -136,24 +151,18 @@ async fn main() {
                     page = new_page;
                     layer = new_layer;
                 }
-
                 let current_layer_ref = doc.get_page(page).get_layer(layer);
-
                 // Column and row position in grid
                 let col = i % GRID_COLS;
                 let row = (i / GRID_COLS) % GRID_ROWS;
-
                 // Calculate spacing to center grid on the page
                 let total_grid_width = CARD_WIDTH_MM * GRID_COLS as f64;
                 let total_grid_height = CARD_HEIGHT_MM * GRID_ROWS as f64;
-
                 let x_offset = (PAGE_X - total_grid_width) / 2.0;
                 let y_offset = (PAGE_Y - total_grid_height) / 2.0;
-
                 // Calculate position
                 let x = Mm(x_offset + CARD_WIDTH_MM * col as f64);
-                let y = Mm(PAGE_Y - y_offset - CARD_HEIGHT_MM * (row as f64 + 1.0)); // position of bottom-left corner of image -> decrease position by one card image height
-
+                let y = Mm(PAGE_Y - y_offset - CARD_HEIGHT_MM * (row as f64 + 1.0));
                 image.add_to_layer(
                     current_layer_ref,
                     ImageTransform {
@@ -166,17 +175,50 @@ async fn main() {
             Err(e) => eprintln!("Error getting image: {}", e),
         }
     }
-
-    match save_pdf(&text_file_path, doc) {
+    match save_pdf(text_file_path, doc) {
         Ok(pdf_filepath) => {
             println!("Saving pdf to path: {}", pdf_filepath);
             open_file_in_explorer(&pdf_filepath);
         }
         Err(e) => eprintln!("Error saving the text file: {}", e),
     }
+}
 
-    println!("Total number of scryfall requests: {}", requests_count);
-    println!("Total processing time: {:.2?}", start.elapsed());
+fn create_pdf_single(text_file_path: &str, images: Vec<std::result::Result<Image, anyhow::Error>>) {
+    let (doc, mut page, mut layer) =
+        PdfDocument::new("PDF_Document_title", Mm(PAGE_X), Mm(PAGE_Y), "Layer 1");
+    let images_length = images.len();
+    for (i, image) in images.into_iter().enumerate() {
+        match image {
+            Ok(image) => {
+                let current_layer_ref = doc.get_page(page).get_layer(layer);
+                let x = Mm(PAGE_X / 2.0 - (CARD_WIDTH_MM / 2.0));
+                let y = Mm(PAGE_X / 2.0 - (CARD_HEIGHT_MM / 2.0));
+                image.add_to_layer(
+                    current_layer_ref,
+                    ImageTransform {
+                        translate_x: Some(x),
+                        translate_y: Some(y),
+                        ..Default::default()
+                    },
+                );
+
+                if i < images_length - 1 {
+                    let (new_page, new_layer) = doc.add_page(Mm(PAGE_X), Mm(PAGE_Y), "new_layer");
+                    page = new_page;
+                    layer = new_layer;
+                }
+            }
+            Err(e) => eprintln!("Error getting image: {}", e),
+        }
+    }
+    match save_pdf(text_file_path, doc) {
+        Ok(pdf_filepath) => {
+            println!("Saving pdf to path: {}", pdf_filepath);
+            open_file_in_explorer(&pdf_filepath);
+        }
+        Err(e) => eprintln!("Error saving the text file: {}", e),
+    }
 }
 
 fn open_file_in_explorer(file_path: &str) {
