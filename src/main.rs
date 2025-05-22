@@ -188,6 +188,11 @@ async fn get_card_image_url(
     set_name: &str,
     format: &str,
 ) -> Result<CardImageUrls> {
+    println!(
+        "[Scryfall API] Requesting image URL for card '{}' from set '{}'",
+        card_name, set_name
+    );
+
     // URL encoding for card_name and set_name
     let card_name = encode(card_name);
     let set_name = encode(set_name);
@@ -261,6 +266,7 @@ async fn get_card_image_url(
 
 async fn get_card_image(png_url: Option<String>) -> Result<Image> {
     if let Some(url) = png_url {
+        println!("[Download] Downloading image from URL: {}", url);
         // downloading image from url to bytes
         let response = reqwest::get(url)
             .await
@@ -280,6 +286,7 @@ async fn get_card_image(png_url: Option<String>) -> Result<Image> {
         image.image = remove_alpha_channel_from_image_x_object(image.image);
         Ok(image)
     } else {
+        println!("[Download] Using local card back image.");
         let img_reader = ImageReader::new(Cursor::new(CARDBACK_IMAGE))
             .with_guessed_format()
             .context("Failed to open card back image")?;
