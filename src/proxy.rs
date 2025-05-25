@@ -4,6 +4,7 @@ extern crate printpdf;
 use std::env::consts::OS;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Cursor};
+use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::{Context, Result};
@@ -13,7 +14,6 @@ use image::io::Reader as ImageReader;
 use printpdf::*;
 use regex::Regex;
 use reqwest::{self, Client};
-use rfd::FileDialog;
 use tokio::time::{sleep, Duration};
 use urlencoding::encode;
 
@@ -44,19 +44,13 @@ impl IntoIterator for CardImageUrls {
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 #[tokio::main]
-async fn main() {
-    let grid: bool = false;
-    let file = FileDialog::new()
-        .set_directory("./input")
-        .add_filter("text", &["txt"])
-        .pick_file();
-
-    let selected_file = match file {
+pub async fn run(file_path: Option<PathBuf>, grid: bool) {
+    let selected_file = match file_path {
         None => {
             eprintln!("Please select a .txt file including the decklist.");
             return;
         }
-        Some(file) => file,
+        Some(file_path) => file_path,
     };
 
     let start: std::time::Instant = std::time::Instant::now();
