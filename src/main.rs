@@ -13,14 +13,14 @@ pub fn main() -> iced::Result {
 #[derive(Default)]
 struct ProxyConfig {
     selected_schema: bool,
-    padding_value: f32,
+    padding_value: f64,
     file_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     SchemaChange(bool),
-    PaddingChanged(f32),
+    PaddingChanged(f64),
     FileSelectButtonPressed,
     StartButtonPressed,
 }
@@ -44,7 +44,11 @@ impl ProxyConfig {
                 self.file_path = selected_file_path;
             }
             Message::StartButtonPressed => {
-                proxy::run(self.file_path.clone(), self.selected_schema);
+                proxy::run(
+                    self.file_path.clone(),
+                    self.selected_schema,
+                    self.padding_value,
+                );
             }
         }
     }
@@ -84,7 +88,7 @@ impl ProxyConfig {
         let padding_slider = if self.selected_schema {
             column![
                 text("Padding"),
-                slider(0.0..=100.0, self.padding_value, Message::PaddingChanged),
+                slider(0.0..=10.5, self.padding_value, Message::PaddingChanged),
                 text(format!("{} mm", self.padding_value))
             ]
             .width(Fill)

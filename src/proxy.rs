@@ -44,7 +44,7 @@ impl IntoIterator for CardImageUrls {
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 #[tokio::main]
-pub async fn run(file_path: Option<PathBuf>, grid: bool) {
+pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) {
     let selected_file = match file_path {
         None => {
             eprintln!("Please select a .txt file including the decklist.");
@@ -121,7 +121,7 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool) {
         try_join_all(image_futures).await.unwrap();
 
     if grid {
-        create_pdf_grid(&text_file_path, images, cards_per_page);
+        create_pdf_grid(&text_file_path, images, cards_per_page, padding_length);
     } else {
         create_pdf_single(&text_file_path, images);
     }
@@ -134,6 +134,7 @@ fn create_pdf_grid(
     text_file_path: &str,
     images: Vec<std::result::Result<Image, anyhow::Error>>,
     cards_per_page: usize,
+    padding_length: f64,
 ) {
     let (doc, mut page, mut layer) =
         PdfDocument::new("PDF_Document_title", Mm(PAGE_X), Mm(PAGE_Y), "Layer 1");
@@ -150,13 +151,16 @@ fn create_pdf_grid(
                 let col = i % GRID_COLS;
                 let row = (i / GRID_COLS) % GRID_ROWS;
                 // Calculate spacing to center grid on the page
-                let total_grid_width = CARD_WIDTH_MM * GRID_COLS as f64;
-                let total_grid_height = CARD_HEIGHT_MM * GRID_ROWS as f64;
+                let total_grid_width =
+                    CARD_WIDTH_MM * GRID_COLS as f64 + (GRID_COLS as f64 - 1.0) * padding_length;
+                let total_grid_height = (CARD_HEIGHT_MM + padding_length) * GRID_ROWS as f64
+                    + (GRID_ROWS as f64 - 1.0) * padding_length;
                 let x_offset = (PAGE_X - total_grid_width) / 2.0;
                 let y_offset = (PAGE_Y - total_grid_height) / 2.0;
                 // Calculate position
-                let x = Mm(x_offset + CARD_WIDTH_MM * col as f64);
-                let y = Mm(PAGE_Y - y_offset - CARD_HEIGHT_MM * (row as f64 + 1.0));
+                let x = Mm(x_offset + (CARD_WIDTH_MM + padding_length) * col as f64);
+                let y =
+                    Mm(PAGE_Y - y_offset - (CARD_HEIGHT_MM + padding_length) * (row as f64 + 1.0));
                 image.add_to_layer(
                     current_layer_ref,
                     ImageTransform {
