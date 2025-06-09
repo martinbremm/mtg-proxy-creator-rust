@@ -22,6 +22,7 @@ enum Message {
     SchemaChange(bool),
     PaddingChanged(f32),
     FileSelectButtonPressed,
+    StartButtonPressed,
 }
 
 impl ProxyConfig {
@@ -40,9 +41,10 @@ impl ProxyConfig {
                     .add_filter("Text Files", &["txt"])
                     .pick_file();
 
-                proxy::run(selected_file_path.clone(), self.selected_schema);
-
                 self.file_path = selected_file_path;
+            }
+            Message::StartButtonPressed => {
+                proxy::run(self.file_path.clone(), self.selected_schema);
             }
         }
     }
@@ -91,7 +93,15 @@ impl ProxyConfig {
             column![]
         };
 
-        let content = column![file_button, choose_schema, padding_slider]
+        let mut start_button = button("Create Proxies");
+
+        if self.file_path.is_some() {
+            start_button = start_button.on_press(Message::StartButtonPressed);
+        }
+
+        let start_button = column![start_button].width(Fill).align_x(Center);
+
+        let content = column![file_button, choose_schema, padding_slider, start_button]
             .spacing(20)
             .padding(20)
             .max_width(600);
