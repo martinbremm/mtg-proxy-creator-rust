@@ -1,4 +1,6 @@
-# MTG Proxy PDF Generator
+# MTG Proxy Creator (PDF)
+
+![Build](https://github.com/martinbremm/mtg-proxy-creator-rust/actions/workflows/rust.yml/badge.svg)
 
 Magic: The Gathering (MTG) Proxy Creator written in Rust. The file-picker let's you choose a decklist file, fetches card images using the [Scryfall API](https://scryfall.com/docs/api) and compiles them into a PDF file (either as one card per page or a 3x3 grid).
 
@@ -11,12 +13,27 @@ Magic: The Gathering (MTG) Proxy Creator written in Rust. The file-picker let's 
 - **PDF Generation**: Compiles the fetched card images into a PDF document using the `printpdf` crate.
 - **Image Transformation**: Includes functionality to handle image alpha channels for proper rendering in the PDF.
 
+## Download
+
+Compiled binaries are automatically generated for each commit to the `main` branch.
+
+➡️ [Latest build artifacts](https://github.com/martinbremm/mtg-proxy-creator-rust/actions?query=branch%3Amain+is%3Asuccess)
+
+**Available Artifacts:**
+- `mtg-proxy-creator-x86_64-unknown-linux-gnu.zip`
+- `mtg-proxy-creator-x86_64-pc-windows-msvc.zip`
+- `mtg-proxy-creator-aarch64-apple-darwin.zip`
+
+To download:
+1. Click the latest workflow run.
+2. Scroll down to the **Artifacts** section.
+3. Download your desired platform build.
 
 ## Setup
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/mtg-deck-image-pdf.git
+   git clone https://github.com/martinbremm/mtg-proxy-creator-rust
    cd mtg-deck-image-pdf
    ```
 
