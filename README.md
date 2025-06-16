@@ -1,6 +1,8 @@
-# MTG Decklist Image to PDF Generator
+# MTG Proxy PDF Generator
 
-This Rust-based project fetches images of Magic: The Gathering (MTG) cards from a decklist, compiles them into a PDF file, and provides a visual representation of the specified MTG deck.
+Magic: The Gathering (MTG) Proxy Creator written in Rust. The file-picker let's you choose a decklist file, fetches card images using the [Scryfall API](https://scryfall.com/docs/api) and compiles them into a PDF file (either as one card per page or a 3x3 grid).
+
+![alt text](image/ui_example.png)
 
 ## Features
 
@@ -9,16 +11,6 @@ This Rust-based project fetches images of Magic: The Gathering (MTG) cards from 
 - **PDF Generation**: Compiles the fetched card images into a PDF document using the `printpdf` crate.
 - **Image Transformation**: Includes functionality to handle image alpha channels for proper rendering in the PDF.
 
-## Prerequisites
-
-- Rust programming language installed.
-- Libraries:
-  - `printpdf`
-  - `image`
-  - `reqwest`
-  - `regex`
-  - `urlencoding`
-  - `rfd`
 
 ## Setup
 
