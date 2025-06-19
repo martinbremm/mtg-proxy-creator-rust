@@ -100,15 +100,29 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) {
                     }
                 }
 
-                println!("Downloading image for card {}", card_name);
+                println!(
+                    "Downloading image for card '{}'{}",
+                    card_name,
+                    set_name
+                        .map(|s| format!(" from set '{}'", s))
+                        .unwrap_or_default()
+                );
 
                 requests_count += 1;
                 sleep(Duration::from_millis(50)).await;
             }
             Err(e) => {
-                eprintln!("Error retrieving png url for card: {} => {}", card_name, e);
+                eprintln!(
+                    "Error retrieving png url for card: '{}'{} => {}",
+                    card_name,
+                    set_name
+                        .map(|s| format!(" from set '{}'", s))
+                        .unwrap_or_default(),
+                    e
+                );
             }
         }
+        println!()
     }
 
     let images: Vec<std::result::Result<Image, anyhow::Error>> =
