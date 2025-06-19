@@ -191,7 +191,7 @@ fn create_pdf_single(text_file_path: &str, images: Vec<std::result::Result<Image
             Ok(image) => {
                 let current_layer_ref = doc.get_page(page).get_layer(layer);
                 let x = Mm(PAGE_X / 2.0 - (CARD_WIDTH_MM / 2.0));
-                let y = Mm(PAGE_X / 2.0 - (CARD_HEIGHT_MM / 2.0));
+                let y = Mm(PAGE_Y / 2.0 - (CARD_HEIGHT_MM / 2.0));
                 image.add_to_layer(
                     current_layer_ref,
                     ImageTransform {
