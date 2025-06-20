@@ -1,14 +1,12 @@
 extern crate image;
 extern crate printpdf;
 
-use std::env::consts::OS;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Cursor};
-use std::path::PathBuf;
-use std::process::Command;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use futures::future::try_join_all;
+use futures::future::join_all;
 use image::codecs::png::PngDecoder;
 use image::io::Reader as ImageReader;
 use printpdf::*;
@@ -43,12 +41,11 @@ impl IntoIterator for CardImageUrls {
 
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
-#[tokio::main]
-pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) {
+pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) -> Option<PathBuf> {
     let selected_file = match file_path {
         None => {
             eprintln!("Please select a .txt file including the decklist.");
-            return;
+            return None;
         }
         Some(file_path) => file_path,
     };
@@ -59,7 +56,7 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) {
         Ok(text_file_path) => text_file_path,
         Err(e) => {
             eprint!("There was an error parsing the file path: {:?}", e);
-            return;
+            return None;
         }
     };
 
@@ -67,7 +64,7 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) {
         Ok(file) => file,
         Err(e) => {
             eprint!("There was an error opening the file: {:?}", e);
-            return;
+            return None;
         }
     };
 
@@ -75,7 +72,7 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) {
         Ok(card_data) => card_data,
         Err(e) => {
             eprintln!("Error parsing the text file: {}", e);
-            return;
+            return None;
         }
     };
 
@@ -91,11 +88,11 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) {
         match get_card_image_url(&client, &card_name, set_name.as_deref(), "png").await {
             Ok(card_image) => {
                 if grid {
-                    let image_future = tokio::spawn(get_card_image(card_image.front));
+                    let image_future = get_card_image(card_image.front);
                     image_futures.push(image_future);
                 } else {
                     for image_url in card_image {
-                        let image_future = tokio::spawn(get_card_image(image_url));
+                        let image_future = get_card_image(image_url);
                         image_futures.push(image_future);
                     }
                 }
@@ -125,17 +122,18 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) {
         println!()
     }
 
-    let images: Vec<std::result::Result<Image, anyhow::Error>> =
-        try_join_all(image_futures).await.unwrap();
+    let images: Vec<std::result::Result<Image, anyhow::Error>> = join_all(image_futures).await;
 
-    if grid {
-        create_pdf_grid(&text_file_path, images, cards_per_page, padding_length);
+    let res = if grid {
+        create_pdf_grid(&text_file_path, images, cards_per_page, padding_length)
     } else {
-        create_pdf_single(&text_file_path, images);
-    }
+        create_pdf_single(&text_file_path, images)
+    };
 
     println!("Total number of scryfall requests: {}", requests_count);
     println!("Total processing time: {:.2?}", start.elapsed());
+
+    res
 }
 
 fn create_pdf_grid(
@@ -143,7 +141,7 @@ fn create_pdf_grid(
     images: Vec<std::result::Result<Image, anyhow::Error>>,
     cards_per_page: usize,
     padding_length: f64,
-) {
+) -> Option<PathBuf> {
     let (doc, mut page, mut layer) =
         PdfDocument::new("PDF_Document_title", Mm(PAGE_X), Mm(PAGE_Y), "Layer 1");
     for (i, image) in images.into_iter().enumerate() {
@@ -181,16 +179,13 @@ fn create_pdf_grid(
             Err(e) => eprintln!("Error getting image: {}", e),
         }
     }
-    match save_pdf(text_file_path, doc) {
-        Ok(pdf_filepath) => {
-            println!("Saving pdf to path: {}", pdf_filepath);
-            open_file_in_explorer(&pdf_filepath);
-        }
-        Err(e) => eprintln!("Error saving the text file: {}", e),
-    }
+    save_pdf(text_file_path, doc)
 }
 
-fn create_pdf_single(text_file_path: &str, images: Vec<std::result::Result<Image, anyhow::Error>>) {
+fn create_pdf_single(
+    text_file_path: &str,
+    images: Vec<std::result::Result<Image, anyhow::Error>>,
+) -> Option<PathBuf> {
     let (doc, mut page, mut layer) =
         PdfDocument::new("PDF_Document_title", Mm(PAGE_X), Mm(PAGE_Y), "Layer 1");
     let images_length = images.len();
@@ -218,32 +213,29 @@ fn create_pdf_single(text_file_path: &str, images: Vec<std::result::Result<Image
             Err(e) => eprintln!("Error getting image: {}", e),
         }
     }
-    match save_pdf(text_file_path, doc) {
-        Ok(pdf_filepath) => {
-            println!("Saving pdf to path: {}", pdf_filepath);
-            open_file_in_explorer(&pdf_filepath);
-        }
-        Err(e) => eprintln!("Error saving the text file: {}", e),
-    }
+    save_pdf(text_file_path, doc)
 }
 
-fn open_file_in_explorer(file_path: &str) {
-    let command = match OS {
-        "linux" => "xdg-open",
-        "macos" => "open",
-        "windows" => "explorer",
-        _ => "",
-    };
-    Command::new(command).arg(file_path).spawn().unwrap();
-}
+fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Option<PathBuf> {
+    let path = Path::new(file_path);
 
-fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<String> {
-    let stem: Vec<&str> = file_path.split(".").collect();
-    let pdf_filepath = format!("{}{}", stem[0], ".pdf");
-    let file = File::create(&pdf_filepath)?;
+    // Get the file stem (filename without extension)
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("output");
+
+    let pdf_filepath = format!("{}.pdf", stem);
+    let pdf_path = PathBuf::from(&pdf_filepath);
+
+    let file = File::create(&pdf_filepath).ok()?;
     let mut writer = BufWriter::new(file);
-    doc.save(&mut writer)?;
-    Ok(pdf_filepath)
+
+    if doc.save(&mut writer).is_err() {
+        return None;
+    }
+
+    Some(pdf_path)
 }
 
 async fn get_card_image_url(

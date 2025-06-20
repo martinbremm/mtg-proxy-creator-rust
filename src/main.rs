@@ -1,7 +1,8 @@
 use std::path::PathBuf;
+use std::process::Command;
 
 use iced::widget::{button, center, column, radio, slider, text};
-use iced::{Center, Element, Fill};
+use iced::{Center, Element, Fill, Task};
 use rfd::FileDialog;
 
 mod proxy;
@@ -23,16 +24,35 @@ enum Message {
     PaddingChanged(f64),
     FileSelectButtonPressed,
     StartButtonPressed,
+    ProxyPdfFileCreated(Option<PathBuf>),
+}
+
+fn open_file(path: PathBuf) {
+    #[cfg(target_os = "windows")]
+    let mut cmd = Command::new("explorer");
+
+    #[cfg(target_os = "macos")]
+    let mut cmd = Command::new("open");
+
+    #[cfg(target_os = "linux")]
+    let mut cmd = Command::new("xdg-open");
+
+    cmd.arg(path);
+
+    // This will block, but if you don't mind, it's fine for quick tasks
+    cmd.spawn().unwrap();
 }
 
 impl ProxyConfig {
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::SchemaChange(schema) => {
                 self.selected_schema = schema;
+                Task::none()
             }
             Message::PaddingChanged(padding) => {
                 self.padding_value = padding;
+                Task::none()
             }
             Message::FileSelectButtonPressed => {
                 // Block until user selects file
@@ -42,13 +62,23 @@ impl ProxyConfig {
                     .pick_file();
 
                 self.file_path = selected_file_path;
+                Task::none()
             }
-            Message::StartButtonPressed => {
+            Message::StartButtonPressed => Task::perform(
                 proxy::run(
                     self.file_path.clone(),
                     self.selected_schema,
                     self.padding_value,
-                );
+                ),
+                Message::ProxyPdfFileCreated,
+            ),
+            Message::ProxyPdfFileCreated(pdf_path_opt) => {
+                if let Some(pdf_path_opt) = pdf_path_opt {
+                    open_file(pdf_path_opt);
+                } else {
+                    eprintln!("PDF creation failed, no file path.");
+                }
+                Task::none()
             }
         }
     }
@@ -122,8 +152,8 @@ fn change_config_properly() {
         file_path: None,
     };
 
-    config.update(Message::SchemaChange(true));
-    config.update(Message::PaddingChanged(70.0));
+    let _ = config.update(Message::SchemaChange(true));
+    let _ = config.update(Message::PaddingChanged(70.0));
 
     assert_eq!(config.selected_schema, true);
     assert_eq!(config.padding_value, 70.0)
