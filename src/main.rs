@@ -24,7 +24,7 @@ enum Message {
     PaddingChanged(f64),
     FileSelectButtonPressed,
     StartButtonPressed,
-    ProxyPdfFileCreated(Option<PathBuf>),
+    ProxyPdfFileCreated(Result<PathBuf, proxy::PdfPathNotCreated>),
 }
 
 fn open_file(path: PathBuf) {
@@ -65,16 +65,17 @@ impl ProxyConfig {
                 Task::none()
             }
             Message::StartButtonPressed => Task::perform(
-                proxy::run(
+                proxy::main(
                     self.file_path.clone(),
                     self.selected_schema,
                     self.padding_value,
                 ),
                 Message::ProxyPdfFileCreated,
             ),
-            Message::ProxyPdfFileCreated(pdf_path_opt) => {
-                if let Some(pdf_path_opt) = pdf_path_opt {
-                    open_file(pdf_path_opt);
+
+            Message::ProxyPdfFileCreated(pdf_path_res) => {
+                if let Ok(pdf_path_res) = pdf_path_res {
+                    open_file(pdf_path_res);
                 } else {
                     eprintln!("PDF creation failed, no file path.");
                 }

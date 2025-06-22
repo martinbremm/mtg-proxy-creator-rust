@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Cursor};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use futures::future::join_all;
 use image::codecs::png::PngDecoder;
 use image::io::Reader as ImageReader;
@@ -30,6 +30,10 @@ struct CardImageUrls {
     back: Option<String>,
 }
 
+#[derive(thiserror::Error, Debug, Clone)]
+#[error("PDF path could not be created")]
+pub struct PdfPathNotCreated;
+
 impl IntoIterator for CardImageUrls {
     type Item = Option<String>;
     type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -41,40 +45,36 @@ impl IntoIterator for CardImageUrls {
 
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
-pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) -> Option<PathBuf> {
+pub async fn main(
+    file_path: Option<PathBuf>,
+    grid: bool,
+    padding_length: f64,
+) -> Result<PathBuf, PdfPathNotCreated> {
+    match run(file_path, grid, padding_length).await {
+        Ok(path_buf) => Ok(path_buf),
+        Err(e) => {
+            eprintln!("Fatal error:\n{e:#}");
+            Err(PdfPathNotCreated)
+        }
+    }
+}
+
+async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) -> Result<PathBuf> {
     let selected_file = match file_path {
         None => {
-            eprintln!("Please select a .txt file including the decklist.");
-            return None;
+            return Err(anyhow!("Please select a .txt file including the decklist."));
         }
         Some(file_path) => file_path,
     };
 
     let start: std::time::Instant = std::time::Instant::now();
 
-    let text_file_path = match selected_file.into_os_string().into_string() {
-        Ok(text_file_path) => text_file_path,
-        Err(e) => {
-            eprint!("There was an error parsing the file path: {:?}", e);
-            return None;
-        }
-    };
+    let file = File::open(&selected_file)?;
 
-    let file = match File::open(&text_file_path) {
-        Ok(file) => file,
-        Err(e) => {
-            eprint!("There was an error opening the file: {:?}", e);
-            return None;
-        }
-    };
-
-    let card_data = match parse_text_file(file).await {
-        Ok(card_data) => card_data,
-        Err(e) => {
-            eprintln!("Error parsing the text file: {}", e);
-            return None;
-        }
-    };
+    let card_data = parse_text_file(file).await.map_err(|e| {
+        eprintln!("Error parsing the text file: {}", e);
+        e
+    })?;
 
     let mut image_futures = vec![];
     let mut requests_count: i32 = 0;
@@ -125,9 +125,9 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) ->
     let images: Vec<std::result::Result<Image, anyhow::Error>> = join_all(image_futures).await;
 
     let res = if grid {
-        create_pdf_grid(&text_file_path, images, cards_per_page, padding_length)
+        create_pdf_grid(&selected_file, images, cards_per_page, padding_length)
     } else {
-        create_pdf_single(&text_file_path, images)
+        create_pdf_single(&selected_file, images)
     };
 
     println!("Total number of scryfall requests: {}", requests_count);
@@ -137,11 +137,11 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) ->
 }
 
 fn create_pdf_grid(
-    text_file_path: &str,
+    text_file_path: &PathBuf,
     images: Vec<std::result::Result<Image, anyhow::Error>>,
     cards_per_page: usize,
     padding_length: f64,
-) -> Option<PathBuf> {
+) -> Result<PathBuf> {
     let (doc, mut page, mut layer) =
         PdfDocument::new("PDF_Document_title", Mm(PAGE_X), Mm(PAGE_Y), "Layer 1");
     for (i, image) in images.into_iter().enumerate() {
@@ -183,9 +183,9 @@ fn create_pdf_grid(
 }
 
 fn create_pdf_single(
-    text_file_path: &str,
+    text_file_path: &PathBuf,
     images: Vec<std::result::Result<Image, anyhow::Error>>,
-) -> Option<PathBuf> {
+) -> Result<PathBuf> {
     let (doc, mut page, mut layer) =
         PdfDocument::new("PDF_Document_title", Mm(PAGE_X), Mm(PAGE_Y), "Layer 1");
     let images_length = images.len();
@@ -216,7 +216,7 @@ fn create_pdf_single(
     save_pdf(text_file_path, doc)
 }
 
-fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Option<PathBuf> {
+fn save_pdf(file_path: &PathBuf, doc: PdfDocumentReference) -> Result<PathBuf> {
     let path = Path::new(file_path);
 
     // Get the file stem (filename without extension)
@@ -228,14 +228,15 @@ fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Option<PathBuf> {
     let pdf_filepath = format!("{}.pdf", stem);
     let pdf_path = PathBuf::from(&pdf_filepath);
 
-    let file = File::create(&pdf_filepath).ok()?;
+    let file = File::create(&pdf_filepath)?;
     let mut writer = BufWriter::new(file);
 
-    if doc.save(&mut writer).is_err() {
-        return None;
-    }
+    doc.save(&mut writer).map_err(|e| {
+        eprintln!("There was an error opening the file: {}", e);
+        e
+    })?;
 
-    Some(pdf_path)
+    Ok(pdf_path)
 }
 
 async fn get_card_image_url(
@@ -286,7 +287,7 @@ async fn get_card_image_url(
                     front: Some(
                         png_url
                             .as_str()
-                            .ok_or_else(|| anyhow::anyhow!("Image URL is not a valid string"))?
+                            .ok_or_else(|| anyhow!("Image URL is not a valid string"))?
                             .to_string(),
                     ),
                     back: None,
@@ -305,7 +306,7 @@ async fn get_card_image_url(
                     front_image_urls.push(
                         png_url
                             .as_str()
-                            .ok_or_else(|| anyhow::anyhow!("Image URL is not a valid string"))?
+                            .ok_or_else(|| anyhow!("Image URL is not a valid string"))?
                             .to_string(),
                     );
                 }
@@ -322,9 +323,9 @@ async fn get_card_image_url(
             }
         }
         // If no image_uris or card_faces were found
-        anyhow::bail!("Image URLs not found in JSON response");
+        bail!("Image URLs not found in JSON response");
     } else {
-        anyhow::bail!(
+        bail!(
             "Error: Failed to retrieve card data. Status Code: {}",
             res.status()
         );
