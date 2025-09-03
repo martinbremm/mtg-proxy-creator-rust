@@ -88,7 +88,7 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) {
     let cards_per_page = GRID_COLS * GRID_ROWS;
 
     for (card_name, set_name) in card_data {
-        match get_card_image_url(&client, &card_name, &set_name, "png").await {
+        match get_card_image_url(&client, &card_name, set_name.as_deref(), "png").await {
             Ok(card_image) => {
                 if grid {
                     let image_future = tokio::spawn(get_card_image(card_image.front));
@@ -101,8 +101,11 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) {
                 }
 
                 println!(
-                    "Downloading image for card {} from set {}",
-                    card_name, set_name
+                    "Downloading image for card '{}'{}",
+                    card_name,
+                    set_name
+                        .map(|s| format!(" from set '{}'", s))
+                        .unwrap_or_default()
                 );
 
                 requests_count += 1;
@@ -110,11 +113,16 @@ pub async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) {
             }
             Err(e) => {
                 eprintln!(
-                    "Error retrieving png url for card: {} from set: {} => {}",
-                    card_name, set_name, e
+                    "Error retrieving png url for card: '{}'{} => {}",
+                    card_name,
+                    set_name
+                        .map(|s| format!(" from set '{}'", s))
+                        .unwrap_or_default(),
+                    e
                 );
             }
         }
+        println!()
     }
 
     let images: Vec<std::result::Result<Image, anyhow::Error>> =
@@ -241,22 +249,33 @@ fn save_pdf(file_path: &str, doc: PdfDocumentReference) -> Result<String> {
 async fn get_card_image_url(
     client: &Client,
     card_name: &str,
-    set_name: &str,
-    format: &str,
+    set_name: Option<&str>,
+    image_file_type: &str,
 ) -> Result<CardImageUrls> {
     println!(
-        "[Scryfall API] Requesting image URL for card '{}' from set '{}'",
-        card_name, set_name
+        "Creating image URL for card '{}'{}",
+        card_name,
+        set_name
+            .map(|s| format!(" from set '{}'", s))
+            .unwrap_or_default()
     );
 
     // URL encoding for card_name and set_name
-    let card_name = encode(card_name);
-    let set_name = encode(set_name);
+    let encoded_card_name = encode(card_name);
+    let base_url = "https://api.scryfall.com/cards/named";
 
-    let url = format!(
-        "https://api.scryfall.com/cards/named?fuzzy={}&set={}",
-        card_name, set_name
-    );
+    let url = match set_name {
+        Some(set) => {
+            let encoded_set_name = encode(set);
+            format!(
+                "{}?fuzzy={}&set={}",
+                base_url, encoded_card_name, encoded_set_name
+            )
+        }
+        None => format!("{}?fuzzy={}", base_url, encoded_card_name),
+    };
+
+    println!("[Scryfall API] Requesting image URL from: '{}'", url);
 
     let res = client
         .get(&url)
@@ -270,7 +289,7 @@ async fn get_card_image_url(
         let data: serde_json::Value = res.json().await.context("Failed to parse JSON response")?;
 
         if let Some(image_uris) = data["image_uris"].as_object() {
-            if let Some(png_url) = image_uris.get(format) {
+            if let Some(png_url) = image_uris.get(image_file_type) {
                 return Ok(CardImageUrls {
                     front: Some(
                         png_url
@@ -290,7 +309,7 @@ async fn get_card_image_url(
                 let image_uris = card_face["image_uris"]
                     .as_object()
                     .context("Field 'image_uris' not found in JSON response")?;
-                if let Some(png_url) = image_uris.get(format) {
+                if let Some(png_url) = image_uris.get(image_file_type) {
                     front_image_urls.push(
                         png_url
                             .as_str()
@@ -355,33 +374,34 @@ async fn get_card_image(png_url: Option<String>) -> Result<Image> {
     }
 }
 
-async fn parse_text_file(file: File) -> io::Result<Vec<(String, String)>> {
-    let mut card_names = Vec::new();
-    let mut set_names = Vec::new();
-    let mut card_pattern = Regex::new(r"\d (.*) \(").unwrap();
+async fn parse_text_file(file: File) -> io::Result<Vec<(String, Option<String>)>> {
+    let mut card_details = Vec::new();
+    let card_pattern_with_set = Regex::new(r"\d (.*) \(").unwrap();
+    let card_pattern_without_set = Regex::new(r"\d (.*)").unwrap();
     let set_pattern = Regex::new(r"\(([a-zA-Z0-9]*)\)").unwrap();
 
     for line in io::BufReader::new(file).lines() {
         let line = line?;
 
-        if !line.contains("(") {
-            card_pattern = Regex::new(r"\d (.*)").unwrap();
-        }
-        if let (Some(card_match), Some(set_match)) =
-            (card_pattern.captures(&line), set_pattern.captures(&line))
-        {
-            card_names.push(card_match[1].to_string());
-            set_names.push(set_match[1].to_string());
-        } else if let Some(card_match) = card_pattern.captures(&line) {
-            card_names.push(card_match[1].to_string());
-            set_names.push(String::new());
+        // TODO: Check if this causes problems with certain decklist formats
+        // Choose regex based on presence of '('
+        let card_pattern = if line.contains('(') {
+            &card_pattern_with_set
+        } else {
+            &card_pattern_without_set
+        };
+
+        if let Some(card_match) = card_pattern.captures(&line) {
+            let card_name = card_match[1].trim().to_string();
+            let set_name = set_pattern.captures(&line).map(|cap| cap[1].to_string());
+            card_details.push((card_name, set_name))
         } else {
             // Handle lines that don't match the expected format
             eprintln!("Warning: Skipped line - {}", line.trim());
         }
     }
 
-    Ok(card_names.into_iter().zip(set_names).collect())
+    Ok(card_details)
 }
 
 // taken from https://github.com/fschutt/printpdf/issues/119
