@@ -88,11 +88,11 @@ async fn run(file_path: Option<PathBuf>, grid: bool, padding_length: f64) -> Res
         match get_card_image_url(&client, &card_name, set_name.as_deref(), "png").await {
             Ok(card_image) => {
                 if grid {
-                    let image_future = get_card_image(card_image.front);
+                    let image_future = get_card_image(client.clone(), card_image.front);
                     image_futures.push(image_future);
                 } else {
                     for image_url in card_image {
-                        let image_future = get_card_image(image_url);
+                        let image_future = get_card_image(client.clone(), image_url);
                         image_futures.push(image_future);
                     }
                 }
@@ -332,11 +332,13 @@ async fn get_card_image_url(
     }
 }
 
-async fn get_card_image(png_url: Option<String>) -> Result<Image> {
+async fn get_card_image(client: Client, png_url: Option<String>) -> Result<Image> {
     if let Some(url) = png_url {
         println!("[Download] Downloading image from URL: {}", url);
         // downloading image from url to bytes
-        let response = reqwest::get(url)
+        let response = client
+            .get(url)
+            .send()
             .await
             .context("Failed to fetch image from URL")?;
         let img_bytes = response
