@@ -362,15 +362,21 @@ async fn get_card_image(png_url: Option<String>) -> Result<Image> {
 
 async fn parse_text_file(file: File) -> io::Result<Vec<(String, Option<String>)>> {
     let mut card_details = Vec::new();
-    let mut card_pattern = Regex::new(r"\d (.*) \(").unwrap();
+    let card_pattern_with_set = Regex::new(r"\d (.*) \(").unwrap();
+    let card_pattern_without_set = Regex::new(r"\d (.*)").unwrap();
     let set_pattern = Regex::new(r"\(([a-zA-Z0-9]*)\)").unwrap();
 
     for line in io::BufReader::new(file).lines() {
         let line = line?;
 
-        if !line.contains("(") {
-            card_pattern = Regex::new(r"\d (.*)").unwrap();
-        }
+        // TODO: Check if this causes problems with certain decklist formats
+        // Choose regex based on presence of '('
+        let card_pattern = if line.contains('(') {
+            &card_pattern_with_set
+        } else {
+            &card_pattern_without_set
+        };
+
         if let Some(card_match) = card_pattern.captures(&line) {
             let card_name = card_match[1].trim().to_string();
             let set_name = set_pattern.captures(&line).map(|cap| cap[1].to_string());
